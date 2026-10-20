@@ -143,8 +143,8 @@ Tran Le Minh}
     Handling conflicts when an admin deletes or renames a folder while members are uploading or downloading inside it.
     \item \textbf{Partial Transfers}\\
     Detecting broken TCP pipes mid-stream; rolling back incomplete uploads to prevent corrupted files on the server.
-    \item \textbf{Ownership Lifecycle}\\
-    Resolving ownership policies for orphaned groups if an admin leaves or account is deleted.
+    \item \textbf{Authentication Across Requests}\\
+    Maintaining session state and validating identity/tokens across subsequent commands without re-sending credentials.
 \end{itemize}
 \end{block}
 \end{column}
