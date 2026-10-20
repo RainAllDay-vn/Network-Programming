@@ -1,0 +1,115 @@
+# ==============================================================================
+# General / OS Files
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+*~
+*.swp
+*.swo
+
+# ==============================================================================
+# VS Code
+# ==============================================================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Eclipse / Language Support for Java (used by VS Code Java extensions)
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.apt_generated_tests/
+bin/
+
+# ==============================================================================
+# Java & Bytecode
+# ==============================================================================
+*.class
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Java VM crash logs
+hs_err_pid*
+replay_pid*
+
+# ==============================================================================
+# Build Tools
+# ==============================================================================
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==============================================================================
+# Documentation / LaTeX Artifacts
+# ==============================================================================
+*.aux
+*.bbl
+*.blg
+*.brf
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.vrb
+*-blx.bib
+
+# ==============================================================================
+# Network Programming & Testing Artifacts
+# ==============================================================================
+# Packet captures & dump files
+*.pcap
+*.pcapng
+*.cap
+*.dmp
+*.dump
+
+# Local environment & log files
+*.log
+.env
+.env.local
