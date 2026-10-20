@@ -115,9 +115,9 @@ Tran Le Minh}
 \end{frame}
 
 % -----------------------------------------------------------------------------
-% Slide 3: Technology Stack & Development Phases
+% Slide 3: Technology Stack & Key Challenges
 % -----------------------------------------------------------------------------
-\begin{frame}{3. Technology Stack \& Development Phases}
+\begin{frame}{3. Technology Stack \& Key Challenges}
 \begin{columns}[T]
 \begin{column}{0.44\textwidth}
 \begin{block}{Technology Stack}
@@ -135,38 +135,17 @@ Tran Le Minh}
 \end{column}
 
 \begin{column}{0.54\textwidth}
-\begin{block}{General Development Phases}
-\centering
-\vspace{1pt}
-\begin{tikzpicture}[
-    node distance=0.15cm,
-    stepbox/.style={
-        rectangle,
-        rounded corners=3pt,
-        draw=hustprimary!70,
-        fill=hustprimary!6,
-        thick,
-        text width=6.9cm,
-        align=left,
-        inner sep=3.5pt
-    },
-    arr/.style={
-        -{Latex[length=2mm, width=1.8mm]},
-        thick,
-        color=hustprimary!80
-    }
-]
-\node[stepbox] (p1) {\footnotesize\textbf{\color{hustprimary}Phase 1:} Protocol Framing \& Storage Schema\\[-1pt]{\tiny Custom packet format \& per-group directory layout}};
-\node[stepbox, below=of p1] (p2) {\footnotesize\textbf{\color{hustprimary}Phase 2:} TCP Socket Engine \& Authentication\\[-1pt]{\tiny Multithreaded socket server, connection handling, register \& login}};
-\node[stepbox, below=of p2] (p3) {\footnotesize\textbf{\color{hustprimary}Phase 3:} Group Management \& RBAC\\[-1pt]{\tiny Group creation, member join requests, and admin privilege controls}};
-\node[stepbox, below=of p3] (p4) {\footnotesize\textbf{\color{hustprimary}Phase 4:} File Transfer \& Directory Operations\\[-1pt]{\tiny Streaming upload/download, subfolder creation, rename \& delete}};
-\node[stepbox, below=of p4] (p5) {\footnotesize\textbf{\color{hustprimary}Phase 5:} Integration \& Concurrency QA\\[-1pt]{\tiny Multi-client stress testing, network error recovery \& verification}};
-
-\draw[arr] (p1) -- (p2);
-\draw[arr] (p2) -- (p3);
-\draw[arr] (p3) -- (p4);
-\draw[arr] (p4) -- (p5);
-\end{tikzpicture}
+\begin{block}{Challenges}
+\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{3pt}
+    \item \textbf{Concurrent Access}\\
+    Handling conflicts when an admin deletes or renames a folder while members are uploading or downloading inside it.
+    \item \textbf{Partial Transfers}\\
+    Detecting broken TCP pipes mid-stream; rolling back incomplete uploads to prevent corrupted files on the server.
+    \item \textbf{Ownership Lifecycle}\\
+    Resolving ownership policies for orphaned groups if an admin leaves or account is deleted.
+\end{itemize}
 \end{block}
 \end{column}
 \end{columns}
