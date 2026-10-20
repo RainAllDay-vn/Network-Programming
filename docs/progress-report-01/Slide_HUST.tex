@@ -9,6 +9,7 @@
 \def\slideContentBotMargin{1.5cm}
 
 \usepackage[blue, 169]{beamerthemeHUST}
+\usetikzlibrary{arrows.meta,positioning,calc}
 
 \renewcommand{\titlePageTitleX}{-0.5cm}
 \renewcommand{\titlePageTitleY}{-0.5cm}
@@ -114,45 +115,58 @@ Tran Le Minh}
 \end{frame}
 
 % -----------------------------------------------------------------------------
-% Slide 3: Inputs & Outputs Specification
+% Slide 3: Technology Stack & Development Phases
 % -----------------------------------------------------------------------------
-\begin{frame}{3. Inputs \& Outputs Specification}
-\footnotesize
+\begin{frame}{3. Technology Stack \& Development Phases}
 \begin{columns}[T]
-\begin{column}{0.49\textwidth}
-\begin{block}{General Operations}
+\begin{column}{0.44\textwidth}
+\begin{block}{Technology Stack}
+\footnotesize
 \begin{itemize}
-    \setlength{\itemsep}{2pt}
-    \item \textbf{UC1 --- Register \& Log In}\\
-    $\bullet$ \textit{In:} Username, password credentials.\\
-    $\bullet$ \textit{Out:} Auth status, session token.
-    \item \textbf{UC2 --- Create or Join Group}\\
-    $\bullet$ \textit{In:} Group info (create) / target ID (join).\\
-    $\bullet$ \textit{Out:} Group folder initialized / request status.
-    \item \textbf{UC3 --- Upload \& Download Files}\\
-    $\bullet$ \textit{In:} Target path, stream (up) / file path (down).\\
-    $\bullet$ \textit{Out:} Stored file notice / file stream.
-    \item \textbf{UC4 --- Create Subfolders}\\
-    $\bullet$ \textit{In:} Parent directory, subfolder name.\\
-    $\bullet$ \textit{Out:} Subfolder created, updated directory.
+    \setlength{\itemsep}{7pt}
+    \item \textbf{Core Language: Java (JDK 17+)}\\
+    Object-oriented design, cross-platform portability, robust standard I/O.
+    \item \textbf{Transport Protocol: TCP Sockets}\\
+    Connection-oriented \texttt{java.net} sockets ensuring reliable, lossless byte streams.
+    \item \textbf{Concurrency: Multithreaded Engine}\\
+    Thread pools (\texttt{ExecutorService}) to handle concurrent client sessions.
 \end{itemize}
 \end{block}
 \end{column}
 
-\begin{column}{0.49\textwidth}
-\begin{block}{Admin-Only Operations}
-\begin{itemize}
-    \setlength{\itemsep}{5pt}
-    \item \textbf{UC5 --- Delete Files \& Subfolders}\\
-    $\bullet$ \textit{In:} Admin token, target item path.\\
-    $\bullet$ \textit{Out:} Permission status, item deleted, updated view.
-    \item \textbf{UC6 --- Rename Files \& Folders}\\
-    $\bullet$ \textit{In:} Admin token, item path, new name.\\
-    $\bullet$ \textit{Out:} Validation check, rename confirmation.
-    \item \textbf{UC7 --- Manage Group Membership}\\
-    $\bullet$ \textit{In:} Admin token, request ID, decision.\\
-    $\bullet$ \textit{Out:} Updated member list, notification.
-\end{itemize}
+\begin{column}{0.54\textwidth}
+\begin{block}{General Development Phases}
+\centering
+\vspace{1pt}
+\begin{tikzpicture}[
+    node distance=0.15cm,
+    stepbox/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=hustprimary!70,
+        fill=hustprimary!6,
+        thick,
+        text width=6.9cm,
+        align=left,
+        inner sep=3.5pt
+    },
+    arr/.style={
+        -{Latex[length=2mm, width=1.8mm]},
+        thick,
+        color=hustprimary!80
+    }
+]
+\node[stepbox] (p1) {\footnotesize\textbf{\color{hustprimary}Phase 1:} Protocol Framing \& Storage Schema\\[-1pt]{\tiny Custom packet format \& per-group directory layout}};
+\node[stepbox, below=of p1] (p2) {\footnotesize\textbf{\color{hustprimary}Phase 2:} TCP Socket Engine \& Authentication\\[-1pt]{\tiny Multithreaded socket server, connection handling, register \& login}};
+\node[stepbox, below=of p2] (p3) {\footnotesize\textbf{\color{hustprimary}Phase 3:} Group Management \& RBAC\\[-1pt]{\tiny Group creation, member join requests, and admin privilege controls}};
+\node[stepbox, below=of p3] (p4) {\footnotesize\textbf{\color{hustprimary}Phase 4:} File Transfer \& Directory Operations\\[-1pt]{\tiny Streaming upload/download, subfolder creation, rename \& delete}};
+\node[stepbox, below=of p4] (p5) {\footnotesize\textbf{\color{hustprimary}Phase 5:} Integration \& Concurrency QA\\[-1pt]{\tiny Multi-client stress testing, network error recovery \& verification}};
+
+\draw[arr] (p1) -- (p2);
+\draw[arr] (p2) -- (p3);
+\draw[arr] (p3) -- (p4);
+\draw[arr] (p4) -- (p5);
+\end{tikzpicture}
 \end{block}
 \end{column}
 \end{columns}
