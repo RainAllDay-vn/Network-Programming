@@ -33,38 +33,36 @@ Tran Le Minh}
 \showPageNumber
 \useStyleHustFull
 \useThinBar
+% Anchor the theme artwork independently of the body font size.
+\setbeamertemplate{background canvas}{%
+    \includegraphics[width=\paperwidth,height=\paperheight]{hust-blue-169-content-hust-full.png}%
+}
+\setbeamertemplate{background}{\drawHustPageNum}
 
 % -----------------------------------------------------------------------------
-% Slide 1: Problem Definition & Use Cases
+% Slide 1: Actors & Problem Definition
 % -----------------------------------------------------------------------------
-\begin{frame}{1. Problem Definition \& Core Use Cases}
-\footnotesize
+\begin{frame}{1. Actors \& Problem Definition}
+\small
 \begin{columns}[T]
-\begin{column}{0.49\textwidth}
-\begin{block}{Core Use Cases}
+\begin{column}{0.40\textwidth}
+\begin{block}{System Actors}
 \begin{itemize}
-    \setlength{\itemsep}{1.5pt}
-    \item \textbf{UC1 (Account Creation)}: Create user account and authenticate.
-    \item \textbf{UC2 (Publish Files)}: Announce local files in the catalog.
-    \item \textbf{UC3 (Cancel Publication)}: Withdraw files from the catalog.
-    \item \textbf{UC4 (Search by Name)}: Search files and view hosting machines.
-    \item \textbf{UC5 (Download File)}: Select a machine and download directly.
-    \item \textbf{UC6 (Report Error)}: Report failed downloads for catalog cleanup.
+    \setlength{\itemsep}{8pt}
+    \item \textbf{File Publisher}: Makes selected local files available to others.
+    \item \textbf{File Seeker}: Searches for files and downloads them from other users.
 \end{itemize}
+\medskip
+The same user can take both roles.
 \end{block}
 \end{column}
-
-\begin{column}{0.49\textwidth}
-\begin{block}{System Actors}
-\textbf{File Publisher}: Makes local files available for sharing.\\
-\textbf{File Seeker}: Searches and downloads files directly.
-\end{block}
-\vspace{-0.3em}
+\begin{column}{0.56\textwidth}
 \begin{block}{Problem Definition}
 \begin{itemize}
-    \setlength{\itemsep}{2pt}
-    \item \textbf{Resource Discovery \& Access}: Locate which active machines hold desired files, access authorized shares, and maintain an accurate catalog as machines join and leave.
-    \item \textbf{Direct Peer-to-Peer Transfer}: Establish direct machine-to-machine connections to stream file data reliably and with integrity, without any intermediary storage server.
+    \setlength{\itemsep}{8pt}
+    \item \textbf{Find shared files}: Help users locate machines that offer the files they need.
+    \item \textbf{Transfer files directly}: Download from the machine holding the file, without intermediary file storage.
+    \item \textbf{Keep listings accurate}: Update the catalog when files are withdrawn or downloads fail.
 \end{itemize}
 \end{block}
 \end{column}
@@ -72,9 +70,44 @@ Tran Le Minh}
 \end{frame}
 
 % -----------------------------------------------------------------------------
-% Slide 2: Inputs & Outputs Specification
+% Slide 2: Core Use Cases
 % -----------------------------------------------------------------------------
-\begin{frame}{2. Inputs \& Outputs Specification}
+\begin{frame}{2. Core Use Cases}
+\small
+\begin{columns}[T]
+\begin{column}{0.49\textwidth}
+\begin{block}{Account \& File Publication}
+\begin{itemize}
+    \setlength{\itemsep}{10pt}
+    \item \textbf{UC1 --- Register \& Log In}\\
+    Create an account and sign in.
+    \item \textbf{UC2 --- Publish Files}\\
+    List local files for others to find.
+    \item \textbf{UC3 --- Cancel Publication}\\
+    Remove a file from the shared catalog.
+\end{itemize}
+\end{block}
+\end{column}
+\begin{column}{0.49\textwidth}
+\begin{block}{File Search \& Download}
+\begin{itemize}
+    \setlength{\itemsep}{10pt}
+    \item \textbf{UC4 --- Search by Name}\\
+    Find files and view machines offering them.
+    \item \textbf{UC5 --- Download a File}\\
+    Select a machine and download directly.
+    \item \textbf{UC6 --- Report a Failed Download}\\
+    Report the failure so the catalog can be updated.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 3: Inputs & Outputs Specification
+% -----------------------------------------------------------------------------
+\begin{frame}{3. Inputs \& Outputs Specification}
 \footnotesize
 \begin{columns}[T]
 \begin{column}{0.49\textwidth}
@@ -113,40 +146,7 @@ Tran Le Minh}
 \end{columns}
 \end{frame}
 
-% -----------------------------------------------------------------------------
-% Slide 3: Functional & Non-Functional Requirements
-% -----------------------------------------------------------------------------
-\begin{frame}{3. Functional \& Non-Functional Requirements}
-\footnotesize
-\begin{columns}[T]
-\begin{column}{0.49\textwidth}
-\begin{block}{Functional Requirements (FR)}
-\begin{itemize}
-    \setlength{\itemsep}{2pt}
-    \item \textbf{FR1 (Account Management)}: Support user account creation and login.
-    \item \textbf{FR2 (File Publishing)}: Enable users to publish available files and cancel publications.
-    \item \textbf{FR3 (Search \& Lookup)}: Search files by name; return addresses of machines holding those files.
-    \item \textbf{FR4 (Direct Download)}: Allow users to retrieve files directly from a designated machine.
-    \item \textbf{FR5 (Catalog Self-Correction)}: Receive error reports for failed downloads and update file catalog.
-\end{itemize}
-\end{block}
-\end{column}
-
-\begin{column}{0.49\textwidth}
-\begin{block}{Non-Functional Requirements (NFR)}
-\begin{itemize}
-    \setlength{\itemsep}{2pt}
-    \item \textbf{Data Integrity}: Files transferred directly between machines must remain bit-for-bit identical to the source.
-    \item \textbf{Catalog Accuracy}: The file index must accurately reflect available files and prune invalid entries.
-    \item \textbf{Fault Resilience}: Transfer failures or offline machines must be handled gracefully with clear user feedback.
-    \item \textbf{Controlled Privacy}: Only files explicitly published by the user are accessible to other network peers.
-\end{itemize}
-\end{block}
-\end{column}
-\end{columns}
-\end{frame}
-
-
+\setbeamertemplate{background canvas}{}
 \useStyleLogoOnly
 \hustthankyou
 
