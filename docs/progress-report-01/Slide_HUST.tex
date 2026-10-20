@@ -17,7 +17,7 @@
 \renewcommand{\hustAuthorAlign}{\alignLeft}
 \renewcommand{\hustInstAlign}{\alignLeft}
 
-\title{DIRECT FILE SHARING APPLICATION}
+\title{GROUP-BASED FILE SHARING APPLICATION}
 \subtitle{Network Programming - IT4062E - 1st Progress Report}
 \author[Cao Van Dong, Luong Ngoc Vu Long, Tran Le Minh]{%
 Cao Van Dong \texorpdfstring{\\}{, }
@@ -44,24 +44,32 @@ Tran Le Minh}
 \begin{frame}{1. Actors \& Problem Definition}
 \small
 \begin{columns}[T]
-\begin{column}{0.40\textwidth}
+\begin{column}{0.43\textwidth}
 \begin{block}{System Actors}
 \begin{itemize}
-    \setlength{\itemsep}{8pt}
-    \item \textbf{File Publisher}: Makes selected local files available to others.
-    \item \textbf{File Seeker}: Searches for files and downloads them from other users.
+    \setlength{\itemsep}{6pt}
+    \item \textbf{Regular Member}:
+    \begin{itemize}
+        \item Registers \& signs in to the system.
+        \item Requests to join groups.
+        \item Uploads/downloads files, creates subfolders in group space.
+    \end{itemize}
+    \item \textbf{Group Admin} (Group Creator):
+    \begin{itemize}
+        \item Creates and manages sharing groups.
+        \item Exclusive rights: rename \& delete files and subfolders.
+    \end{itemize}
 \end{itemize}
-\medskip
-The same user can take both roles.
 \end{block}
 \end{column}
-\begin{column}{0.56\textwidth}
+\begin{column}{0.53\textwidth}
 \begin{block}{Problem Definition}
 \begin{itemize}
-    \setlength{\itemsep}{8pt}
-    \item \textbf{Find shared files}: Help users locate machines that offer the files they need.
-    \item \textbf{Transfer files directly}: Download from the machine holding the file, without intermediary file storage.
-    \item \textbf{Keep listings accurate}: Update the catalog when files are withdrawn or downloads fail.
+    \setlength{\itemsep}{6pt}
+    \item \textbf{Group-Centric Collaboration}: Provide dedicated shared folders for teams to organize and collaborate online.
+    \item \textbf{Hierarchical Content Organization}: Allow members to structure project data with nested subfolders and file uploads.
+    \item \textbf{Role-Based Access Control}: Enforce administrative authority so that only group admins can rename or delete files and folders, preventing unauthorized data loss.
+    \item \textbf{Network File Transfer}: Support secure client-server file uploads and downloads across the network.
 \end{itemize}
 \end{block}
 \end{column}
@@ -75,28 +83,28 @@ The same user can take both roles.
 \small
 \begin{columns}[T]
 \begin{column}{0.49\textwidth}
-\begin{block}{Account \& File Publication}
+\begin{block}{Account \& Group Management}
 \begin{itemize}
-    \setlength{\itemsep}{10pt}
+    \setlength{\itemsep}{8pt}
     \item \textbf{UC1 --- Register \& Log In}\\
-    Create an account and sign in.
-    \item \textbf{UC2 --- Publish Files}\\
-    List local files for others to find.
-    \item \textbf{UC3 --- Cancel Publication}\\
-    Remove a file from the shared catalog.
+    Register a new account and authenticate for usage.
+    \item \textbf{UC2 --- Create Sharing Group}\\
+    Create a new group with a dedicated shared folder; creator gains admin privileges.
+    \item \textbf{UC3 --- Join Group}\\
+    Browse existing groups and submit requests to join.
 \end{itemize}
 \end{block}
 \end{column}
 \begin{column}{0.49\textwidth}
-\begin{block}{File Search \& Download}
+\begin{block}{File \& Folder Operations}
 \begin{itemize}
-    \setlength{\itemsep}{10pt}
-    \item \textbf{UC4 --- Search by Name}\\
-    Find files and view machines offering them.
-    \item \textbf{UC5 --- Download a File}\\
-    Select a machine and download directly.
-    \item \textbf{UC6 --- Report a Failed Download}\\
-    Report the failure so the catalog can be updated.
+    \setlength{\itemsep}{8pt}
+    \item \textbf{UC4 --- Upload \& Download Files}\\
+    Any group member can upload files to the group directory or download files to local storage.
+    \item \textbf{UC5 --- Create Subfolders}\\
+    Group members can create subfolders inside the group's shared folder.
+    \item \textbf{UC6 --- Manage Files \& Folders (Admin)}\\
+    Exclusive authority to delete files/subfolders and rename files/folders.
 \end{itemize}
 \end{block}
 \end{column}
@@ -110,35 +118,35 @@ The same user can take both roles.
 \footnotesize
 \begin{columns}[T]
 \begin{column}{0.49\textwidth}
-\begin{block}{Account \& Catalog Operations}
+\begin{block}{Account \& Group Operations}
 \begin{itemize}
     \setlength{\itemsep}{3pt}
-    \item \textbf{Account Creation \& Login}:\\
+    \item \textbf{Account Registration \& Login}:\\
     $\bullet$ \textit{In:} Username, password credentials.\\
-    $\bullet$ \textit{Out:} Auth status (success/failure), session state.
-    \item \textbf{File Publication}:\\
-    $\bullet$ \textit{In:} File name, metadata, host machine address.\\
-    $\bullet$ \textit{Out:} Publication confirmation; catalog index updated.
-    \item \textbf{Cancel Publication}:\\
-    $\bullet$ \textit{In:} Target file identifier to revoke.\\
-    $\bullet$ \textit{Out:} Revocation status; file removed from catalog.
+    $\bullet$ \textit{Out:} Auth status (success/failure), session token.
+    \item \textbf{Create Sharing Group}:\\
+    $\bullet$ \textit{In:} Group name, creator user ID.\\
+    $\bullet$ \textit{Out:} Group created, dedicated folder provisioned, admin privileges assigned.
+    \item \textbf{Request to Join Group}:\\
+    $\bullet$ \textit{In:} Target Group ID, requesting user ID.\\
+    $\bullet$ \textit{Out:} Join request status (pending/approved), member list updated.
 \end{itemize}
 \end{block}
 \end{column}
 
 \begin{column}{0.49\textwidth}
-\begin{block}{Search, Download \& Maintenance}
+\begin{block}{File \& Directory Operations}
 \begin{itemize}
     \setlength{\itemsep}{3pt}
-    \item \textbf{Search for Files}:\\
-    $\bullet$ \textit{In:} Target file name / keyword query.\\
-    $\bullet$ \textit{Out:} List of machine addresses hosting matching files.
-    \item \textbf{Direct File Download}:\\
-    $\bullet$ \textit{In:} Selected machine address, target file name.\\
-    $\bullet$ \textit{Out:} File content streamed to local storage.
-    \item \textbf{Report Indexing Error}:\\
-    $\bullet$ \textit{In:} Unsuccessful download signal (failed host/file).\\
-    $\bullet$ \textit{Out:} Error logged; catalog updated to purge entry.
+    \item \textbf{File Upload \& Download}:\\
+    $\bullet$ \textit{In:} Group/folder path, file stream/metadata (upload); file path (download).\\
+    $\bullet$ \textit{Out:} File saved / streamed to client; transfer status.
+    \item \textbf{Create Subfolder}:\\
+    $\bullet$ \textit{In:} Target parent path, new subfolder name.\\
+    $\bullet$ \textit{Out:} Subfolder created; directory view updated.
+    \item \textbf{Rename \& Delete (Admin Only)}:\\
+    $\bullet$ \textit{In:} Admin session, target item path, new name (rename) or deletion signal.\\
+    $\bullet$ \textit{Out:} Permission validated; item renamed or deleted; updated tree returned.
 \end{itemize}
 \end{block}
 \end{column}
