@@ -4,9 +4,9 @@
 \usepackage{lmodern}
 
 \def\slideContentLeftMargin{0.5cm}
-\def\slideContentRightMargin{1cm}
-\def\hustHeaderHeight{1cm}
-\def\slideContentBotMargin{3.5cm}
+\def\slideContentRightMargin{0.8cm}
+\def\hustHeaderHeight{0.5cm}
+\def\slideContentBotMargin{1.5cm}
 
 \usepackage[blue, 169]{beamerthemeHUST}
 
@@ -17,11 +17,11 @@
 \renewcommand{\hustAuthorAlign}{\alignLeft}
 \renewcommand{\hustInstAlign}{\alignLeft}
 
-\title{BUILDING A FILE SHARING APPLICATION}
-\subtitle{Network Programming Project}
-\author{\\
-Cao Van Dong \\
-Luong Ngoc Vu Long \\
+\title{DIRECT FILE SHARING APPLICATION}
+\subtitle{Network Programming Project --- Topic Identification}
+\author[Cao Van Dong, Luong Ngoc Vu Long, Tran Le Minh]{%
+Cao Van Dong \texorpdfstring{\\}{, }
+Luong Ngoc Vu Long \texorpdfstring{\\}{, }
 Tran Le Minh}
 \institute{Network Programming Project}
 
@@ -34,81 +34,116 @@ Tran Le Minh}
 \useStyleHustFull
 \useThinBar
 
-\begin{frame}{Week 1: Project Proposal}
+% -----------------------------------------------------------------------------
+% Slide 1: Problem Definition & Use Cases
+% -----------------------------------------------------------------------------
+\begin{frame}{1. Problem Definition \& Core Use Cases}
+\footnotesize
 \begin{columns}[T]
-\begin{column}{0.58\textwidth}
-\begin{block}{Selected topic}
-\Large Building a File Sharing Application
-\end{block}
-\begin{block}{Project idea}
-Develop a networked application where users can securely organize and share files in group workspaces.
-\end{block}
-\begin{block}{Goal}
-Combine account and group management with reliable file transfer and controlled collaboration.
-\end{block}
-\end{column}
-\begin{column}{0.37\textwidth}
-\begin{alertblock}{Week 1 checklist}
-\begin{enumerate}
-\item Identify the project team.
-\item Propose the application topic.
-\item Review the topic with the lecturer.
-\end{enumerate}
-\end{alertblock}
-\end{column}
-\end{columns}
-\end{frame}
-
-\begin{frame}{Sharing Within Groups}
-\begin{columns}[T]
-\begin{column}{0.48\textwidth}
-\begin{block}{Member workflow}
+\begin{column}{0.49\textwidth}
+\begin{block}{Core Use Cases}
 \begin{itemize}
-\item Create an account and sign in to the application.
-\item Create a group or request access to an existing group; members may also be invited.
-\item Once approved, members use the group's shared folder to exchange files.
-\item Upload and download files, browse contents, and organize work into subfolders.
+    \setlength{\itemsep}{1.5pt}
+    \item \textbf{UC1 (Account Creation)}: Create user account and authenticate.
+    \item \textbf{UC2 (Publish Files)}: Announce local files in the catalog.
+    \item \textbf{UC3 (Cancel Publication)}: Withdraw files from the catalog.
+    \item \textbf{UC4 (Search by Name)}: Search files and view hosting machines.
+    \item \textbf{UC5 (Download File)}: Select a machine and download directly.
+    \item \textbf{UC6 (Report Error)}: Report failed downloads for catalog cleanup.
 \end{itemize}
 \end{block}
 \end{column}
-\begin{column}{0.48\textwidth}
-\begin{block}{Group roles}
+
+\begin{column}{0.49\textwidth}
+\begin{block}{System Actors}
+\textbf{File Publisher}: Makes local files available for sharing.\\
+\textbf{File Seeker}: Searches and downloads files directly.
+\end{block}
+\vspace{-0.3em}
+\begin{block}{Problem Definition}
 \begin{itemize}
-\item The group creator manages the group as its administrator.
-\item Members contribute files and create subfolders.
-\item The administrator manages membership and controls renaming or deleting shared files and folders.
-\item Members can organize shared content by copying or moving files and folders.
+    \setlength{\itemsep}{2pt}
+    \item \textbf{Resource Discovery \& Access}: Locate which active machines hold desired files, access authorized shares, and maintain an accurate catalog as machines join and leave.
+    \item \textbf{Direct Peer-to-Peer Transfer}: Establish direct machine-to-machine connections to stream file data reliably and with integrity, without any intermediary storage server.
 \end{itemize}
 \end{block}
 \end{column}
 \end{columns}
 \end{frame}
 
-
-\begin{frame}{Proposed Network Design}
-\small
+% -----------------------------------------------------------------------------
+% Slide 2: Inputs & Outputs Specification
+% -----------------------------------------------------------------------------
+\begin{frame}{2. Inputs \& Outputs Specification}
+\footnotesize
 \begin{columns}[T]
-\begin{column}{0.48\textwidth}
-\begin{block}{Request handling}
+\begin{column}{0.49\textwidth}
+\begin{block}{Account \& Catalog Operations}
 \begin{itemize}
-\item Users connect to a central server using socket-based communication.
-\item The server authenticates sessions and checks group membership and permissions before processing requests.
-\item Group actions and file operations are recorded for activity tracking.
+    \setlength{\itemsep}{3pt}
+    \item \textbf{Account Creation \& Login}:\\
+    $\bullet$ \textit{In:} Username, password credentials.\\
+    $\bullet$ \textit{Out:} Auth status (success/failure), session state.
+    \item \textbf{File Publication}:\\
+    $\bullet$ \textit{In:} File name, metadata, host machine address.\\
+    $\bullet$ \textit{Out:} Publication confirmation; catalog index updated.
+    \item \textbf{Cancel Publication}:\\
+    $\bullet$ \textit{In:} Target file identifier to revoke.\\
+    $\bullet$ \textit{Out:} Revocation status; file removed from catalog.
 \end{itemize}
 \end{block}
 \end{column}
-\begin{column}{0.48\textwidth}
-\begin{block}{File service}
+
+\begin{column}{0.49\textwidth}
+\begin{block}{Search, Download \& Maintenance}
 \begin{itemize}
-\item Stream file data between client and server to support large uploads and downloads.
-\item Keep each group's content in its own shared folder, with tools to browse and organize files and subfolders.
-\item Apply role-based permissions to file and folder changes.
+    \setlength{\itemsep}{3pt}
+    \item \textbf{Search for Files}:\\
+    $\bullet$ \textit{In:} Target file name / keyword query.\\
+    $\bullet$ \textit{Out:} List of machine addresses hosting matching files.
+    \item \textbf{Direct File Download}:\\
+    $\bullet$ \textit{In:} Selected machine address, target file name.\\
+    $\bullet$ \textit{Out:} File content streamed to local storage.
+    \item \textbf{Report Indexing Error}:\\
+    $\bullet$ \textit{In:} Unsuccessful download signal (failed host/file).\\
+    $\bullet$ \textit{Out:} Error logged; catalog updated to purge entry.
 \end{itemize}
 \end{block}
 \end{column}
 \end{columns}
-\vspace{0.5em}
-\centering\textbf{Client} $\longleftrightarrow$ \textbf{Socket server} $\longleftrightarrow$ \textbf{Group storage}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 3: Functional & Non-Functional Requirements
+% -----------------------------------------------------------------------------
+\begin{frame}{3. Functional \& Non-Functional Requirements}
+\footnotesize
+\begin{columns}[T]
+\begin{column}{0.49\textwidth}
+\begin{block}{Functional Requirements (FR)}
+\begin{itemize}
+    \setlength{\itemsep}{2pt}
+    \item \textbf{FR1 (Account Management)}: Support user account creation and login.
+    \item \textbf{FR2 (File Publishing)}: Enable users to publish available files and cancel publications.
+    \item \textbf{FR3 (Search \& Lookup)}: Search files by name; return addresses of machines holding those files.
+    \item \textbf{FR4 (Direct Download)}: Allow users to retrieve files directly from a designated machine.
+    \item \textbf{FR5 (Catalog Self-Correction)}: Receive error reports for failed downloads and update file catalog.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.49\textwidth}
+\begin{block}{Non-Functional Requirements (NFR)}
+\begin{itemize}
+    \setlength{\itemsep}{2pt}
+    \item \textbf{Data Integrity}: Files transferred directly between machines must remain bit-for-bit identical to the source.
+    \item \textbf{Catalog Accuracy}: The file index must accurately reflect available files and prune invalid entries.
+    \item \textbf{Fault Resilience}: Transfer failures or offline machines must be handled gracefully with clear user feedback.
+    \item \textbf{Controlled Privacy}: Only files explicitly published by the user are accessible to other network peers.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
 \end{frame}
 
 

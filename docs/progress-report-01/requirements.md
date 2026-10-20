@@ -1,0 +1,2 @@
+- Team identification: students/team.
+- Topic identification: Pick a topic or propose an application over internet that you want to develop (3 slides)
