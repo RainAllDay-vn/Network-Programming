@@ -4,7 +4,6 @@
 \usepackage{lmodern}
 \usepackage{booktabs}
 \usepackage{tabularx}
-\usepackage{colortbl}
 
 \def\slideContentLeftMargin{0.6cm}
 \def\slideContentRightMargin{0.6cm}
@@ -65,9 +64,9 @@ Tran Le Minh}
 \footnotesize
 \begin{itemize}
     \setlength{\itemsep}{3pt}
-    \item \textbf{Client-Server Architecture}: Central server guarantees 24/7 availability and acts as authoritative access control enforcement.
-    \item \textbf{Rigid RBAC Model}: Members can upload, download, and create subfolders; \textbf{only Group Admins} can rename or delete files and folders.
-    \item \textbf{Resilient Framing \& Staging}: Custom LTV protocol over TCP, bounded chunk streaming, and atomic commit staging with SHA-256 verification.
+    \item \textbf{Client-Server Architecture}: Each group has a shared folder on the server. Files remain available when uploaders disconnect, while the server is reachable.
+    \item \textbf{Group Permissions}: Members can upload, download, and create subfolders; \textbf{only Group Admins} can rename or delete files and folders.
+    \item \textbf{File Transfer}: Custom LTV frames over TCP, bounded file chunks, and SHA-256 verification before publishing uploads.
 \end{itemize}
 \end{block}
 \end{column}
@@ -100,7 +99,7 @@ Tran Le Minh}
     \item \textbf{Identity \& Session (UC1)}: Account registration, credential authentication, and persistent session binding.
     \item \textbf{Group Lifecycle (UC2--UC3)}: Create group (auto-assigns Admin), browse groups, and review pending member requests.
     \item \textbf{Workspace Navigation (UC4, UC7)}: Hierarchical subfolder navigation and directory creation.
-    \item \textbf{Streamed File Transfer (UC5--UC6)}: Chunked upload/download with SHA-256 checksums and resume support.
+    \item \textbf{Streamed File Transfer (UC5--UC6)}: Chunked uploads and downloads with SHA-256 verification. Interrupted transfers restart in v1.
     \item \textbf{Administrative Protection (UC8)}: Exclusive admin controls for folder/file deletion and renaming.
     \item \textbf{Real-Time Notifications (UC9)}: Server push events for member joins, uploads, and modifications.
 \end{itemize}
@@ -128,15 +127,15 @@ Tran Le Minh}
 \toprule
 \textbf{Operation} & \textbf{Guest} & \textbf{Non-Member} & \textbf{Member} & \textbf{Group Admin} & \textbf{Security Policy / Enforcement Rule} \\
 \midrule
-\texttt{AUTH\_LOGIN} / \texttt{REGISTER} & \checkmark & \checkmark & \checkmark & \checkmark & Public unauthenticated commands \\
+\texttt{AUTH\_REGISTER} / \texttt{AUTH\_LOGIN} & \checkmark & $\times$ & $\times$ & $\times$ & Available before login \\
 \texttt{GROUP\_CREATE} & $\times$ & \checkmark & \checkmark & \checkmark & Authenticated user becomes Admin of new group \\
 \texttt{GROUP\_JOIN\_REQ} & $\times$ & \checkmark & $\times$ & $\times$ & Non-members can submit pending request \\
 \texttt{GROUP\_JOIN\_REVIEW} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Approve or reject applicants \\
 \texttt{DIR\_LIST} / \texttt{FILE\_INFO} & $\times$ & $\times$ & \checkmark & \checkmark & Restricted to approved group members \\
-\texttt{FILE\_DOWNLOAD} & $\times$ & $\times$ & \checkmark & \checkmark & Read access granted to all members \\
-\texttt{FILE\_UPLOAD} / \texttt{DIR\_CREATE} & $\times$ & $\times$ & \checkmark & \checkmark & Write access to contribute files / subfolders \\
-\texttt{FILE\_RENAME} / \texttt{DIR\_RENAME} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Returns \texttt{403 FORBIDDEN} otherwise \\
-\texttt{FILE\_DELETE} / \texttt{DIR\_DELETE} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Returns \texttt{403 FORBIDDEN} otherwise \\
+Download files & $\times$ & $\times$ & \checkmark & \checkmark & Read access granted to all members \\
+Upload / \texttt{DIR\_CREATE} & $\times$ & $\times$ & \checkmark & \checkmark & New items only; no overwrite \\
+\texttt{FILE\_RENAME} / \texttt{DIR\_RENAME} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only} \\
+\texttt{FILE\_DELETE} / \texttt{DIR\_DELETE} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only} \\
 \bottomrule
 \end{tabularx}
 \end{frame}
@@ -158,8 +157,8 @@ Tran Le Minh}
     \begin{itemize}
         \setlength{\itemsep}{1pt}
         \item \textbf{Authoritative RBAC}: Single source of truth for access control.
-        \item \textbf{24/7 Availability}: Continuous centralized file access.
-        \item \textbf{Atomic Concurrency}: Server lock arbitration avoids races.
+        \item \textbf{Independent of Peers}: Files stay on the server when members disconnect.
+        \item \textbf{Tradeoff}: The server must be reachable and has finite storage and bandwidth.
     \end{itemize}
 \end{itemize}
 \end{block}
@@ -208,9 +207,9 @@ Tran Le Minh}
 \scriptsize
 \begin{itemize}
     \setlength{\itemsep}{2.5pt}
-    \item \textbf{I/O Multiplexer Layer}: Persistent TCP sockets; worker pool decodes LTV frames asynchronously without blocking the network loop.
-    \item \textbf{Session \& RBAC Interceptor}: Active session table; validates role permissions prior to command dispatch.
-    \item \textbf{Concurrency \& Lock Manager}: Path-scoped \texttt{ReadWriteLock}; multiple concurrent readers vs single writer.
+    \item \textbf{Connection Layer}: One worker per connection processes incoming frames in order. Outgoing frames are serialized per socket.
+    \item \textbf{Session \& RBAC}: Login binds a user to the connection; each group command checks membership and role.
+    \item \textbf{Concurrency}: One read/write lock per group. Members can read together; changes to shared content are exclusive.
     \item \textbf{Dual Storage Layer}: Relational SQLite (accounts, RBAC, metadata) + partitioned file tree.
 \end{itemize}
 \end{block}
@@ -226,10 +225,10 @@ Tran Le Minh}
     arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary}
 ]
 \node[stepbox] (p1) {\tiny\textbf{\color{hustprimary}1. TCP Stream Demuxer}: Accumulates bytes; verifies 5-byte header; extracts frame};
-\node[stepbox, below=of p1] (p2) {\tiny\textbf{\color{hustprimary}2. Authentication \& RBAC}: Validates session token and role permissions};
-\node[stepbox, below=of p2] (p3) {\tiny\textbf{\color{hustprimary}3. Lock Arbitration}: Acquires ReadLock (Read/List) or WriteLock (Delete/Commit)};
-\node[stepbox, below=of p3] (p4) {\tiny\textbf{\color{hustprimary}4. Worker Pool Execution}: Queries DB / streams chunks / commits file};
-\node[stepbox, below=of p4] (p5) {\tiny\textbf{\color{hustprimary}5. Outgoing Response \& Push}: Replies to caller; broadcasts async change events};
+\node[stepbox, below=of p1] (p2) {\tiny\textbf{\color{hustprimary}2. Session \& RBAC}: Checks the connection identity and target group permissions};
+\node[stepbox, below=of p2] (p3) {\tiny\textbf{\color{hustprimary}3. Lock Arbitration}: Takes a group read or write lock when accessing shared content};
+\node[stepbox, below=of p3] (p4) {\tiny\textbf{\color{hustprimary}4. Command Execution}: Queries metadata, streams bytes, or commits a change};
+\node[stepbox, below=of p4] (p5) {\tiny\textbf{\color{hustprimary}5. Response \& Events}: Replies to caller; sends events to eligible users};
 
 \draw[arr] (p1) -- (p2);
 \draw[arr] (p2) -- (p3);
@@ -252,9 +251,9 @@ Tran Le Minh}
 \scriptsize
 \begin{itemize}
     \setlength{\itemsep}{2pt}
-    \item \textbf{Why TCP}: Demands 100\% byte reliability, in-order delivery, and flow control for file transfers.
-    \item \textbf{Boundary Challenge}: Byte streams lack message boundaries; leads to packet fragmentation and concatenation across socket reads.
-    \item \textbf{Solution: LTV Framing}: 5-byte header prefix defines frame length; receiver buffers until full frame arrives.
+    \item \textbf{Why TCP}: Reliable, ordered byte stream with flow control. The application still handles connection failures.
+    \item \textbf{Boundary Challenge}: A socket read can return part of a frame or several frames.
+    \item \textbf{LTV Framing}: Read the 4-byte length first. Close the connection if $N$ is outside $1$ to $1{,}048{,}576$; otherwise read exactly $N$ more bytes.
 \end{itemize}
 \end{block}
 \end{column}
@@ -314,7 +313,7 @@ Used for authentication, directory navigation, transfer control, and push event 
 
 \vspace{3pt}
 \begin{block}{Type 0x01: Raw Binary File Chunk Frame}
-Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth savings).
+Carries file bytes directly, avoiding Base64 encoding.
 \end{block}
 \vspace{-3pt}
 \centering
@@ -335,8 +334,8 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \begin{itemize}
     \scriptsize
     \item \textbf{Transfer UUID (16 Bytes)}: Identifies the active upload/download staging session.
-    \item \textbf{Offset (8 Bytes)}: Validates sequential chunk order and enables resumption after interruption.
-    \item \textbf{ChunkLen (4 Bytes)}: Payload size of the raw byte slice (standard chunk: 32 KiB / 64 KiB).
+    \item \textbf{Offset (8 Bytes)}: Must match the next expected byte; starts at zero.
+    \item \textbf{ChunkLen (4 Bytes)}: 1 to 32 KiB of raw bytes; $N = 29 + \texttt{ChunkLen}$. Integers use big-endian encoding.
 \end{itemize}
 \end{frame}
 
@@ -352,7 +351,7 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \begin{verbatim}
 {
   "v": 1, "kind": "REQUEST",
-  "reqId": "c8f2b740-9b3a-4f51-b8ef-101",
+  "reqId": "r17",
   "cmd": "FILE_UPLOAD_INIT",
   "payload": {
     "groupId": 4, "path": "/reports/final.pdf",
@@ -381,10 +380,9 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \begin{block}{Server Response Envelope}
 \tiny
 \begin{verbatim}
-// Successful Response
 {
   "v": 1, "kind": "RESPONSE",
-  "reqId": "c8f2b740-9b3a-4f51-b8ef-101",
+  "reqId": "r17",
   "cmd": "FILE_UPLOAD_INIT",
   "ok": true,
   "payload": {
@@ -392,10 +390,10 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
     "chunkSize": 32768, "nextOffset": 0
   }
 }
-// Error Response
+
 {
   "v": 1, "kind": "RESPONSE",
-  "reqId": "d91a1002-8a1c-4033-9112-202",
+  "reqId": "r18",
   "cmd": "DIR_DELETE",
   "ok": false,
   "error": {
@@ -414,7 +412,8 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 % -----------------------------------------------------------------------------
 \begin{frame}{9. Command Catalog: Authentication \& Groups}
 \small
-\begin{block}{Authentication \& Group Membership Protocol Commands}
+\begin{block}{Authentication \& Group Membership}
+\scriptsize v1 design: send credentials over TLS; store salted password hashes on the server.
 \end{block}
 \vspace{-4pt}
 \centering
@@ -425,15 +424,15 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \toprule
 \textbf{Command} & \textbf{Caller Role} & \textbf{Key Request Parameters} & \textbf{Key Response / Event Payload} \\
 \midrule
-\texttt{AUTH\_REGISTER} & Unauthenticated & \texttt{username}, \texttt{passwordHash}, \texttt{fullName} & \texttt{userId}, status: \texttt{"REGISTERED"} \\
-\texttt{AUTH\_LOGIN} & Unauthenticated & \texttt{username}, \texttt{passwordHash} & \texttt{userId}, \texttt{sessionToken}, \texttt{joinedGroups} \\
-\texttt{AUTH\_LOGOUT} & Authenticated & None & Invalidates session, releases locks \\
+\texttt{AUTH\_REGISTER} & Unauthenticated & \texttt{username}, \texttt{password}, \texttt{fullName} & \texttt{userId}; account created \\
+\texttt{AUTH\_LOGIN} & Unauthenticated & \texttt{username}, \texttt{password} & \texttt{userId}; binds user to connection \\
+\texttt{AUTH\_LOGOUT} & Authenticated & None & Clears connection identity \\
 \texttt{HEARTBEAT\_PING} & Any connected & \texttt{timestamp} & \texttt{pong}, connection health check \\
 \midrule
 \texttt{GROUP\_CREATE} & Authenticated & \texttt{groupName}, \texttt{description} & \texttt{groupId}, creator becomes \textbf{Group Admin} \\
 \texttt{GROUP\_LIST} & Authenticated & Filter: \texttt{"ALL"} or \texttt{"MY\_GROUPS"} & Array of \texttt{[groupId, name, role, adminName]} \\
-\texttt{GROUP\_JOIN\_REQ} & Non-Member & \texttt{groupId}, optional \texttt{message} & \texttt{reqId}, status: \texttt{"PENDING"}; notifies Admin \\
-\texttt{GROUP\_JOIN\_REVIEW} & \textbf{Group Admin} & \texttt{reqId}, \texttt{action: "ACCEPT"|"REJECT"} & Updates role to \texttt{MEMBER}; triggers \texttt{EVENT} \\
+\texttt{GROUP\_JOIN\_REQ} & Non-Member & \texttt{groupId}, optional \texttt{message} & \texttt{joinRequestId}; \texttt{PENDING} \\
+\texttt{GROUP\_JOIN\_REVIEW} & \textbf{Group Admin} & \texttt{joinRequestId}, \texttt{ACCEPT} or \texttt{REJECT} & Records decision; grants access on acceptance only \\
 \texttt{GROUP\_MEMBERS} & Group Member & \texttt{groupId} & Roster of members with roles (\texttt{MEMBER}/\texttt{ADMIN}) \\
 \texttt{GROUP\_LEAVE} & Group Member & \texttt{groupId} & Revokes access; Admin cannot abandon group \\
 \bottomrule
@@ -457,13 +456,13 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \textbf{Command} & \textbf{Caller Role} & \textbf{Key Request Parameters} & \textbf{Key Response / Error Behavior} \\
 \midrule
 \texttt{DIR\_LIST} & Member / Admin & \texttt{groupId}, \texttt{dirPath} & Entries: \texttt{[name, isDir, size, modified, author]} \\
-\texttt{DIR\_CREATE} & Member / Admin & \texttt{groupId}, \texttt{parentPath}, \texttt{dirName} & Creates subfolder; broadcasts \texttt{EVENT\_DIR\_CREATED} \\
-\texttt{DIR\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{path}, \texttt{newName} & Renames folder; rejects members with \texttt{FORBIDDEN} \\
+\texttt{DIR\_CREATE} & Member / Admin & \texttt{groupId}, \texttt{parentPath}, \texttt{dirName} & Creates subfolder; rejects a duplicate name \\
+\texttt{DIR\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{path}, \texttt{newName} & Renames folder; denies non-admin requests \\
 \texttt{DIR\_DELETE} & \textbf{Admin Only} & \texttt{groupId}, \texttt{path}, \texttt{recursive} & Recursively deletes directory; checks write lock \\
 \midrule
 \texttt{FILE\_INFO} & Member / Admin & \texttt{groupId}, \texttt{filePath} & Returns size, SHA-256 hash, author, timestamp \\
-\texttt{FILE\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath}, \texttt{newFilename} & Renames file; rejects members with \texttt{FORBIDDEN} \\
-\texttt{FILE\_DELETE} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath} & Removes file; broadcasts \texttt{EVENT\_FILE\_DELETED} \\
+\texttt{FILE\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath}, \texttt{newName} & Renames file; denies non-admin requests \\
+\texttt{FILE\_DELETE} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath} & Removes file and notifies group members \\
 \bottomrule
 \end{tabularx}
 \end{frame}
@@ -486,14 +485,15 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \midrule
 \texttt{FILE\_UPLOAD\_INIT} & Member / Admin & \texttt{groupId}, \texttt{path}, \texttt{fileSize}, \texttt{sha256} & Allocates \texttt{.tmp} file; returns \texttt{transferId}, \texttt{chunkSize} \\
 \texttt{Type 0x01 Chunk} & Member / Admin & \texttt{UUID}, \texttt{offset}, \texttt{chunkLen}, \texttt{rawBytes} & Ingests binary chunk; advances staging offset \\
-\texttt{FILE\_UPLOAD\_FINISH} & Member / Admin & \texttt{transferId}, \texttt{finalSha256} & Verifies SHA-256; atomic rename to repository \\
-\texttt{FILE\_UPLOAD\_ABORT} & Member / Admin & \texttt{transferId}, \texttt{reason} & Deletes temporary \texttt{.tmp} staging file immediately \\
+\texttt{FILE\_UPLOAD\_FINISH} & Member / Admin & \texttt{transferId} & Verifies size and hash; commits file and metadata before success \\
+\texttt{FILE\_UPLOAD\_ABORT} & Member / Admin & \texttt{transferId} & Discards staging file and ends transfer \\
 \midrule
-\texttt{FILE\_DOWNLOAD\_INIT} & Member / Admin & \texttt{groupId}, \texttt{filePath}, \texttt{offset} & Acquires ReadLock; returns \texttt{transferId}, \texttt{totalChunks} \\
-\texttt{Type 0x01 Stream} & Server $\to$ Client & \texttt{UUID}, \texttt{offset}, \texttt{chunkLen}, \texttt{rawBytes} & Server streams sequential chunks to client socket \\
-\texttt{FILE\_DOWNLOAD\_ACK} & Member / Admin & \texttt{transferId}, \texttt{status: "COMPLETE"} & Releases ReadLock; finishes transfer session \\
+\texttt{FILE\_DOWNLOAD\_INIT} & Member / Admin & \texttt{groupId}, \texttt{filePath} & Takes group read lock; replies with \texttt{transferId}, \texttt{fileSize}, \texttt{sha256} \\
+\texttt{Type 0x01 Stream} & Server $\to$ Client & \texttt{UUID}, \texttt{offset}, \texttt{chunkLen}, \texttt{rawBytes} & Streams from byte zero; releases lock after last write or failure \\
 \bottomrule
 \end{tabularx}
+\par\smallskip
+\scriptsize Client verifies downloaded size and hash before saving the final file. No application ACK is needed.
 \end{frame}
 
 % -----------------------------------------------------------------------------
@@ -502,7 +502,7 @@ Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth
 \begin{frame}{12. State Machine: Client Connection Lifecycle}
 \small
 \begin{block}{Connection Lifecycle States \& Event Transitions}
-Guarantees session boundaries and timely reclamation of server resources.
+Login binds a user to the connection. Each group command identifies its target group.
 \end{block}
 \vspace{2pt}
 \centering
@@ -512,29 +512,25 @@ Guarantees session boundaries and timely reclamation of server resources.
 ]
 % Row 1
 \node[st] (disc) {DISCONNECTED};
-\node[st, right=1.6cm of disc] (conn) {CONNECTED\\{\tiny Unauthenticated}};
-\node[st, right=1.6cm of conn] (auth) {AUTHENTICATED\\{\tiny User Bound}};
-
-% Row 2
-\node[st, below=1.3cm of auth] (work) {GROUP WORKSPACE\\{\tiny Group Context}};
-\node[st, left=1.6cm of work] (tran) {TRANSFER ACTIVE\\{\tiny Staged Chunk Stream}};
+\node[st, right=2.2cm of disc] (conn) {CONNECTED\\{\tiny Unauthenticated}};
+\node[st, right=2.2cm of conn] (auth) {AUTHENTICATED\\{\tiny User Bound}};
 
 % Forward transitions
-\draw[arr] (disc) -- node[above=2pt] {TCP Connect} (conn);
-\draw[arr] (conn) -- node[above=2pt] {\texttt{LOGIN} ok} (auth);
-\draw[arr] (auth) -- node[right=3pt] {\texttt{GROUP\_SELECT}} (work);
-\draw[arr] ($(work.west)+(0,0.12)$) -- node[above=2pt] {\texttt{TRANSFER\_INIT}} ($(tran.east)+(0,0.12)$);
-\draw[arr] ($(tran.east)+(0,-0.12)$) -- node[below=2pt] {Complete} ($(work.west)+(0,-0.12)$);
+\draw[arr] (disc) -- node[above=2pt] {TCP + TLS setup} (conn);
+\draw[arr] (conn) -- node[above=2pt] {\texttt{AUTH\_LOGIN} succeeds} (auth);
 
 % Disconnect / Reset transitions
-\draw[arr] (conn.north) to[bend right=22] node[above=2pt] {Timeout} (disc.north);
-\draw[arr] ($(auth.south)-(0.4,0)$) -- ++(0,-0.4) -| node[pos=0.25, above=1pt] {\texttt{LOGOUT}} ($(disc.south)+(0.3,0)$);
-\draw[arr] (tran.west) -| node[pos=0.75, right=3pt, font=\tiny] {\shortstack[l]{Socket Drop:\\Clean \texttt{.tmp} \& Free Locks}} ($(disc.south)-(0.3,0)$);
+\draw[arr] (auth.north) to[bend right=30] node[above=2pt] {\texttt{AUTH\_LOGOUT}} (conn.north);
+\draw[arr] (conn.south) to[bend left=23] node[below=2pt] {Close / timeout} (disc.south east);
+\draw[arr] (auth.south) -- ++(0,-1.2) coordinate (drop)
+    -- node[midway, below=2pt] {Detected disconnect / timeout} (disc.south |- drop) -- (disc.south);
 \end{tikzpicture}
 \vspace{2pt}
 \begin{itemize}
     \scriptsize
-    \item \textbf{Socket Drop Guard}: Socket disconnect at any stage triggers instant release of active Read/Write locks and unlinks incomplete staging files.
+    \item A failed login leaves the connection unauthenticated.
+    \item v1 allows one active transfer per connection and sets a deadline for stalled transfers.
+    \item On disconnect or timeout, the worker clears the session, discards partial uploads, and frees locks.
 \end{itemize}
 \end{frame}
 
@@ -556,33 +552,29 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 ]
 % Row 1
 \node[st] (idle) {IDLE};
-\node[st, right=1.6cm of idle] (stg) {UPLOAD STAGING\\{\tiny Allocate \texttt{.upload\_UUID.tmp}}};
-\node[st, right=2.2cm of stg] (rcv) {RECEIVING CHUNKS\\{\tiny Ingest Type 0x01 Frames}};
+\node[st, right=2.0cm of idle] (rcv) {RECEIVING CHUNKS\\{\tiny Write to private staging file}};
+\node[st, right=2.2cm of rcv] (vfy) {VERIFY INTEGRITY\\{\tiny Check received size and SHA-256}};
 
 % Row 2
-\node[err, below=1.4cm of stg] (abt) {ROLLBACK \& ABORT\\{\tiny Unlink \texttt{.tmp}; Free Locks}};
-\node[st, below=1.4cm of rcv] (vfy) {VERIFY INTEGRITY\\{\tiny Compare SHA-256 Hash}};
-\node[st, right=1.2cm of vfy] (cmt) {COMMITTED\\{\tiny Atomic File Rename}};
+\node[err, below=1.25cm of rcv] (abt) {ABORTED\\{\tiny Discard staging file}};
+\node[st, below=1.25cm of vfy] (cmt) {COMMITTED\\{\tiny File and metadata ready}};
 
 % Success transitions
-\draw[arr] (idle) -- node[above=2pt] {\texttt{UPLOAD\_INIT}} (stg);
-\draw[arr] (stg) -- node[above=2pt] {First Chunk} (rcv);
-\draw[arr] (rcv) -- node[right=3pt] {Offset = Size} (vfy);
-\draw[arr] (vfy) -- node[above=2pt] {Hash Match} (cmt);
+\draw[arr] (idle) -- node[above=2pt] {\texttt{FILE\_UPLOAD\_INIT}} (rcv);
+\draw[arr] (rcv) -- node[above=2pt] {\texttt{FILE\_UPLOAD\_FINISH}} (vfy);
+\draw[arr] (vfy) -- node[right=3pt] {Checks and commit succeed} (cmt);
 
 % Failure transitions
-\draw[errarr] (stg) -- node[left=2pt] {Disk Full} (abt);
-\draw[errarr] ($(rcv.south)-(0.6,0)$) -- node[pos=0.45, below=2pt, sloped] {Socket Drop / Timeout} (abt.north east);
-\draw[errarr] (vfy) -- node[above=2pt] {Hash Mismatch} (abt);
-\draw[errarr] (abt.west) -| node[pos=0.3, below=2pt] {Reset State} (idle.south);
+\draw[errarr] (rcv) -- node[left=2pt] {\shortstack[l]{Abort, timeout,\\disconnect, write failure}} (abt);
+\draw[errarr] (vfy.south west) -- node[above=2pt, sloped] {Verification or commit fails} (abt.north east);
 \end{tikzpicture}
 \vspace{3pt}
 \scriptsize
 \begin{itemize}
     \setlength{\itemsep}{1.5pt}
-    \item \textbf{Atomic Staging}: Upload writes to hidden temporary file \texttt{/storage/.tmp/.upload\_UUID.tmp}.
-    \item \textbf{Checksum Validation}: Client sends target SHA-256; server verifies byte integrity upon completion.
-    \item \textbf{Zero Partial Ghost Files}: Broken connections trigger immediate deletion of the temporary file.
+    \item \textbf{Receiving}: Each accepted chunk advances the expected offset; receiving all bytes does not publish the file.
+    \item \textbf{Commit}: Recheck permissions and destination under the group write lock. Move the file on the same filesystem and record its metadata before replying.
+    \item \textbf{Recovery}: Failed uploads stay out of group listings. On startup, reconcile staging files and files moved before their metadata was recorded.
 \end{itemize}
 \end{frame}
 
@@ -597,16 +589,11 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 \scriptsize
 \begin{enumerate}
     \setlength{\itemsep}{2pt}
-    \item \textbf{TCP Demuxer}: Accumulates frames; checks 5B header.
-    \item \textbf{Routing}: Type 0x00 $\to$ JSON parser; Type 0x01 $\to$ Streamer.
-    \item \textbf{RBAC Guard}: Validates active session and group role.
-    \item \textbf{Lock Arbitration}:
-    \begin{itemize}
-        \tiny
-        \item \texttt{ReadLock}: For \texttt{FILE\_DOWNLOAD}, \texttt{DIR\_LIST}.
-        \item \texttt{WriteLock}: For \texttt{DIR\_RENAME}, \texttt{DELETE}, Commit.
-    \end{itemize}
-    \item \textbf{Execution \& Push}: Executes DB query / file I/O; sends response; broadcasts events to group members.
+    \item \textbf{Decode}: Check length and type. Close on invalid framing.
+    \item \textbf{Validate}: Check command fields and state. For chunks, check transfer ownership, expected offset, and remaining size.
+    \item \textbf{Authorize}: Check the user's role in the target group. Reject paths outside that group's root.
+    \item \textbf{Execute}: Take the required group lock and perform the operation.
+    \item \textbf{Reply}: Return a result or error. Send change events after success.
 \end{enumerate}
 \end{block}
 \end{column}
@@ -619,9 +606,9 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
     box/.style={rectangle, rounded corners=2pt, draw=hustprimary, fill=hustprimary!8, thick, font=\tiny, align=center, inner sep=2.5pt},
     arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary}
 ]
-\node[box, text width=6.2cm] (b1) {\textbf{Member 1: Download} \texttt{/reports/A.pdf}\\Acquires \textbf{Shared ReadLock} on \texttt{/reports/A.pdf}};
-\node[box, below=0.2cm of b1, text width=6.2cm] (b2) {\textbf{Member 2: Download} \texttt{/reports/A.pdf}\\Acquires \textbf{Shared ReadLock} (Allowed concurrently)};
-\node[box, below=0.2cm of b2, text width=6.2cm, fill=red!10, draw=red!80!black] (b3) {\textbf{Admin: Delete / Rename} \texttt{/reports/}\\Requests \textbf{Exclusive WriteLock} $\to$ \textbf{Blocked / Queued}\\Waits until readers finish or returns \texttt{LOCK\_CONFLICT}};
+\node[box, text width=6.2cm] (b1) {\textbf{Member 1: Download} \texttt{/reports/A.pdf}\\Takes the group's shared read lock};
+\node[box, below=0.2cm of b1, text width=6.2cm] (b2) {\textbf{Member 2: Download} \texttt{/reports/A.pdf}\\Takes the same shared read lock};
+\node[box, below=0.2cm of b2, text width=6.2cm, fill=red!10, draw=red!80!black] (b3) {\textbf{Admin: Delete / Rename} \texttt{/reports/}\\Tries the group's exclusive write lock\\Receives \texttt{LOCK\_CONFLICT}; may retry later};
 
 \draw[arr] (b1) -- (b2);
 \draw[arr] (b2) -- (b3);
@@ -629,7 +616,7 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 \vspace{2pt}
 \begin{itemize}
     \tiny
-    \item Eliminates filesystem crashes when admins rename or delete folders while members are actively downloading inside them.
+    \item The download worker releases its lock after the last write or on failure. A group lock can also block writes to unrelated folders in that group.
 \end{itemize}
 \end{block}
 \end{column}
@@ -663,13 +650,13 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 
 \draw[msg] ($(userB)+(0,-0.75)$) -- node[above=1pt] {\texttt{GROUP\_JOIN\_REQ(groupId=4)}} ($(srv)+(0,-0.75)$);
 \draw[msg] ($(srv)+(0,-1.20)$) -- node[above=1pt] {\texttt{INSERT INTO join\_reqs (PENDING)}} ($(db)+(0,-1.20)$);
-\draw[msg] ($(db)+(0,-1.65)$) -- node[above=1pt] {\texttt{ok (reqId=55)}} ($(srv)+(0,-1.65)$);
+\draw[msg] ($(db)+(0,-1.65)$) -- node[above=1pt] {\texttt{joinRequestId=55}} ($(srv)+(0,-1.65)$);
 \draw[msg] ($(srv)+(0,-2.10)$) -- node[above=1pt] {\texttt{RESPONSE: ok, status="PENDING"}} ($(userB)+(0,-2.10)$);
 
-\draw[pushmsg] ($(srv)+(0,-2.55)$) -- node[above=1pt] {\texttt{EVENT: JOIN\_REQUESTED(reqId=55, Bob)}} ($(admin)+(0,-2.55)$);
+\draw[pushmsg] ($(srv)+(0,-2.55)$) -- node[above=1pt] {\texttt{EVENT: JOIN\_REQUESTED(joinRequestId=55)}} ($(admin)+(0,-2.55)$);
 
-\draw[msg] ($(admin)+(0,-3.00)$) -- node[above=1pt] {\texttt{GROUP\_JOIN\_REVIEW(reqId=55, ACCEPT)}} ($(srv)+(0,-3.00)$);
-\draw[msg] ($(srv)+(0,-3.45)$) -- node[above=1pt] {\texttt{UPDATE role="MEMBER" WHERE user=Bob}} ($(db)+(0,-3.45)$);
+\draw[msg] ($(admin)+(0,-3.00)$) -- node[above=1pt] {\texttt{GROUP\_JOIN\_REVIEW(joinRequestId=55, ACCEPT)}} ($(srv)+(0,-3.00)$);
+\draw[msg] ($(srv)+(0,-3.45)$) -- node[above=1pt] {Record acceptance; add Bob to group 4} ($(db)+(0,-3.45)$);
 \draw[pushmsg] ($(srv)+(0,-3.90)$) -- node[above=1pt] {\texttt{EVENT: JOIN\_ACCEPTED(groupId=4)}} ($(userB)+(0,-3.90)$);
 \end{tikzpicture}
 \end{frame}
@@ -677,9 +664,9 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 % -----------------------------------------------------------------------------
 % Slide 16: Interaction Sequence: Chunked Upload & Atomic Commit
 % -----------------------------------------------------------------------------
-\begin{frame}{16. Sequence: Chunked Upload \& Atomic Commit}
+\begin{frame}{16. Sequence: Chunked Upload \& Commit}
 \small
-\begin{block}{Interaction: Chunk Streaming with Integrity Verification \& Atomic Move}
+\begin{block}{Interaction: Receive Chunks, Verify, Then Publish}
 \end{block}
 \vspace{-4pt}
 \centering
@@ -694,21 +681,22 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 \node[actor, right=1.5cm of demux] (stg) {Staging Engine};
 \node[actor, right=1.5cm of stg] (repo) {Group Repository};
 
-\draw[lifeline] (client) -- ++(0,-4.1);
-\draw[lifeline] (demux) -- ++(0,-4.1);
-\draw[lifeline] (stg) -- ++(0,-4.1);
-\draw[lifeline] (repo) -- ++(0,-4.1);
+\draw[lifeline] (client) -- ++(0,-4.6);
+\draw[lifeline] (demux) -- ++(0,-4.6);
+\draw[lifeline] (stg) -- ++(0,-4.6);
+\draw[lifeline] (repo) -- ++(0,-4.6);
 
-\draw[msg] ($(client)+(0,-0.75)$) -- node[above=1pt] {\texttt{Type 0: UPLOAD\_INIT(file, size, sha256)}} ($(demux)+(0,-0.75)$);
-\draw[msg] ($(demux)+(0,-1.20)$) -- node[above=1pt] {\texttt{Create /tmp/.upload\_UUID.tmp}} ($(stg)+(0,-1.20)$);
+\draw[msg] ($(client)+(0,-0.75)$) -- node[above=1pt] {\texttt{FILE\_UPLOAD\_INIT}} ($(demux)+(0,-0.75)$);
+\draw[msg] ($(demux)+(0,-1.20)$) -- node[above=1pt] {Allocate staging file} ($(stg)+(0,-1.20)$);
 \draw[msg] ($(demux)+(0,-1.65)$) -- node[above=1pt] {\texttt{RESPONSE: ok, transferId, chunkSize}} ($(client)+(0,-1.65)$);
 
-\draw[binmsg] ($(client)+(0,-2.10)$) -- node[above=1pt] {\texttt{Type 1: Chunk 0 [UUID, off=0, 32KB]}} ($(demux)+(0,-2.10)$);
-\draw[binmsg] ($(demux)+(0,-2.55)$) -- node[above=1pt] {\texttt{Append bytes; update rolling SHA-256}} ($(stg)+(0,-2.55)$);
-\draw[binmsg] ($(client)+(0,-3.00)$) -- node[above=1pt] {\texttt{Type 1: Chunk N [UUID, off=N, rem]}} ($(demux)+(0,-3.00)$);
+\draw[binmsg] ($(client)+(0,-2.10)$) -- node[above=1pt] {\texttt{Type 0x01: offset=0, chunkLen=32768}} ($(demux)+(0,-2.10)$);
+\draw[binmsg] ($(demux)+(0,-2.55)$) -- node[above=1pt] {Append bytes; update hash} ($(stg)+(0,-2.55)$);
+\draw[binmsg] ($(client)+(0,-3.00)$) -- node[above=1pt] {\texttt{Type 0x01: offset=32768, ...}} ($(demux)+(0,-3.00)$);
 
-\draw[msg] ($(client)+(0,-3.45)$) -- node[above=1pt] {\texttt{Type 0: UPLOAD\_FINISH(UUID, sha256)}} ($(demux)+(0,-3.45)$);
-\draw[msg] ($(demux)+(0,-3.90)$) -- node[above=1pt] {\texttt{Verify hash; Atomic Rename .tmp $\to$ final}} ($(repo)+(0,-3.90)$);
+\draw[msg] ($(client)+(0,-3.45)$) -- node[above=1pt] {\texttt{FILE\_UPLOAD\_FINISH(transferId)}} ($(demux)+(0,-3.45)$);
+\draw[msg] ($(demux)+(0,-3.90)$) -- node[above=1pt] {Verify size and hash, then commit file and metadata} ($(repo)+(0,-3.90)$);
+\draw[msg] ($(demux)+(0,-4.35)$) -- node[above=1pt] {\texttt{RESPONSE: ok}} ($(client)+(0,-4.35)$);
 \end{tikzpicture}
 \end{frame}
 
@@ -728,24 +716,24 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
     errmsg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=red!80!black, font=\tiny}
 ]
 \node[actor] (member) {Member (Reader)};
-\node[actor, right=1.5cm of member] (lock) {Lock Manager};
-\node[actor, right=1.5cm of lock] (srv) {Server Storage};
-\node[actor, right=1.5cm of srv] (admin) {Admin (Writer)};
+\node[actor, right=1.5cm of member] (srv) {Server};
+\node[actor, right=1.5cm of srv] (lock) {Group Lock};
+\node[actor, right=1.5cm of lock] (admin) {Admin (Writer)};
 
 \draw[lifeline] (member) -- ++(0,-4.1);
 \draw[lifeline] (lock) -- ++(0,-4.1);
 \draw[lifeline] (srv) -- ++(0,-4.1);
 \draw[lifeline] (admin) -- ++(0,-4.1);
 
-\draw[msg] ($(member)+(0,-0.75)$) -- node[above=1pt] {\texttt{DOWNLOAD\_INIT(/data/A.pdf)}} ($(lock)+(0,-0.75)$);
-\draw[msg] ($(lock)+(0,-1.15)$) -- ++(0.4,0) |- node[pos=0.5, right=2pt, font=\tiny] {\textbf{Acquire ReadLock} (Granted)} ($(lock)+(0,-1.50)$);
-\draw[msg] ($(lock)+(0,-1.75)$) -- node[above=1pt] {\texttt{Stream Type 1 Chunks to Member}} ($(member)+(0,-1.75)$);
+\draw[msg] ($(member)+(0,-0.75)$) -- node[above=1pt] {\texttt{FILE\_DOWNLOAD\_INIT}} ($(srv)+(0,-0.75)$);
+\draw[msg] ($(srv)+(0,-1.20)$) -- node[above=1pt] {Read lock acquired} ($(lock)+(0,-1.20)$);
+\draw[msg] ($(srv)+(0,-1.65)$) -- node[above=1pt] {Begin sending chunks} ($(member)+(0,-1.65)$);
 
 \draw[msg] ($(admin)+(0,-2.20)$) -- node[above=1pt] {\texttt{DIR\_DELETE(/data/)}} ($(srv)+(0,-2.20)$);
-\draw[msg] ($(srv)+(0,-2.65)$) -- node[above=1pt] {\textbf{Request Exclusive WriteLock}} ($(lock)+(0,-2.65)$);
-\draw[errmsg] ($(lock)+(0,-3.10)$) -- node[above=1pt] {\textbf{Conflict: Active ReadLock held!}} ($(srv)+(0,-3.10)$);
-\draw[errmsg] ($(srv)+(0,-3.50)$) -- node[above=1pt] {\texttt{Error: 409 LOCK\_CONFLICT}} ($(admin)+(0,-3.50)$);
-\draw[msg] ($(member)+(0,-3.90)$) -- node[above=2pt] {\texttt{DOWNLOAD\_COMPLETE (Release Lock)}} ($(lock)+(0,-3.90)$);
+\draw[msg] ($(srv)+(0,-2.60)$) -- node[above=1pt] {Try write lock} ($(lock)+(0,-2.60)$);
+\draw[errmsg] ($(lock)+(0,-3.00)$) -- node[above=1pt] {Denied: active reader} ($(srv)+(0,-3.00)$);
+\draw[errmsg] ($(srv)+(0,-3.40)$) -- node[above=1pt] {\texttt{ERROR: LOCK\_CONFLICT}} ($(admin)+(0,-3.40)$);
+\draw[msg] ($(srv)+(0,-3.80)$) -- node[above=1pt] {After last write: release read lock} ($(lock)+(0,-3.80)$);
 \end{tikzpicture}
 \end{frame}
 
@@ -762,7 +750,7 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 \begin{itemize}
     \setlength{\itemsep}{1.5pt}
     \item \textbf{Phase 1: Design Review (W1--2)}: Use cases, RBAC matrix, LTV framing, command catalog. (\textbf{Status: Done})
-    \item \textbf{Phase 2: Core Socket Engine (W3--4)}: Multithreaded TCP server, byte accumulator, SQLite DB schema, authentication.
+    \item \textbf{Phase 2: Core Socket Engine (W3--4)}: TCP workers, TLS, frame decoder, SQLite schema, authentication.
     \item \textbf{Phase 3: Group Management (W5--6)}: Group CRUD, join request review, subfolder CRUD, admin delete/rename.
 \end{itemize}
 \end{block}
@@ -777,8 +765,8 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
     \begin{itemize}
         \setlength{\itemsep}{0.5pt}
         \item Type 0x01 chunk streaming (32 KiB) \& \texttt{.tmp} staging.
-        \item Rolling SHA-256 validation \& atomic commit.
-        \item Fault recovery on socket drop / disconnect.
+        \item Streaming SHA-256 verification and file commit.
+        \item Timeout and disconnect cleanup; restart failed transfers.
     \end{itemize}
     \item \textbf{Phase 5: JavaFX GUI \& QA (W9--10)}:
     \begin{itemize}
@@ -795,7 +783,7 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
 % -----------------------------------------------------------------------------
 % Slide 19: Summary & Conclusion
 % -----------------------------------------------------------------------------
-\begin{frame}{19. Summary \& Conclusion}
+\begin{frame}{19. Design Summary \& Feedback}
 \small
 \begin{columns}[T]
 \begin{column}{0.48\textwidth}
@@ -805,20 +793,20 @@ Directly resolves the challenge of broken TCP connections leaving partial ghost 
     \setlength{\itemsep}{2.5pt}
     \item \textbf{LTV Framing Protocol}: 5-byte header resolves TCP stream boundary ambiguity cleanly.
     \item \textbf{Multiplexed Streaming}: JSON control frames and raw binary chunks multiplexed over one persistent TCP socket.
-    \item \textbf{Rigid RBAC Security}: Group isolation with exclusive admin protection for delete and rename operations.
-    \item \textbf{Fault-Tolerant Staging}: Temporary file staging with SHA-256 verification prevents partial ghost files.
+    \item \textbf{Group Permissions}: Members contribute files; admins alone rename or delete them.
+    \item \textbf{Upload Staging}: Verify size and SHA-256 before adding a file to the group listing.
 \end{itemize}
 \end{block}
 \end{column}
 
 \begin{column}{0.48\textwidth}
-\begin{block}{Addressed Challenges from Report 01}
+\begin{block}{Decisions for Feedback}
 \scriptsize
 \begin{itemize}
     \setlength{\itemsep}{2.5pt}
-    \item \textbf{Challenge 1: Concurrent Access}: Path-scoped \texttt{ReentrantReadWriteLock} prevents race conditions between readers and writers.
-    \item \textbf{Challenge 2: Partial Transfers}: Guaranteed atomic rename from staging file only after full hash verification.
-    \item \textbf{Challenge 3: Session State}: Connection-bound session table validates identity without re-sending credentials.
+    \item Is one lock per group sufficient for the first version?
+    \item Should interrupted transfers restart in v1, or is resume required?
+    \item Next: revise the protocol based on feedback, then test split frames, forbidden actions, and interrupted transfers.
 \end{itemize}
 \end{block}
 \end{column}
