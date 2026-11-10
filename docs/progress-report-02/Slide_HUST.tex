@@ -1,0 +1,832 @@
+\documentclass[t, aspectratio=169]{beamer}
+\usepackage[utf8]{vietnam}
+\usepackage{amsthm,amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{colortbl}
+
+\def\slideContentLeftMargin{0.6cm}
+\def\slideContentRightMargin{0.6cm}
+\def\hustHeaderHeight{0.45cm}
+\def\slideContentBotMargin{1.2cm}
+\def\slideContentTopPadding{0cm}
+
+\usepackage[blue, 169]{beamerthemeHUST}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,fit,backgrounds,decorations.pathreplacing}
+
+\renewcommand{\titlePageTitleX}{-0.5cm}
+\renewcommand{\titlePageTitleY}{-0.5cm}
+\renewcommand{\hustTitleAlign}{\alignLeft}
+\renewcommand{\hustSubtitleAlign}{\alignLeft}
+\renewcommand{\hustAuthorAlign}{\alignLeft}
+\renewcommand{\hustInstAlign}{\alignLeft}
+
+\title{BUILDING A FILE SHARING APPLICATION}
+\subtitle{2nd Progress Report: System \& Protocol Design}
+\author[Cao Van Dong, Luong Ngoc Vu Long, Tran Le Minh]{%
+Cao Van Dong \texorpdfstring{\\}{, }
+Luong Ngoc Vu Long \texorpdfstring{\\}{, }
+Tran Le Minh}
+
+\begin{document}
+
+\husttitlepage
+
+\resetPageCount
+\showPageNumber
+\useStyleHustFull
+\useThinBar
+\setbeamertemplate{background canvas}{%
+    \includegraphics[width=\paperwidth,height=\paperheight]{hust-blue-169-content-hust-full.png}%
+}
+\setbeamertemplate{background}{\drawHustPageNum}
+
+% -----------------------------------------------------------------------------
+% Slide 1: Application Introduction & Problem Statement
+% -----------------------------------------------------------------------------
+\begin{frame}{1. Application Introduction \& Problem Statement}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Motivation \& Collaboration Needs}
+\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{3pt}
+    \item \textbf{Structured Team Workspaces}: Projects require dedicated, group-isolated folders to organize code, documents, and assets without cross-group leakage.
+    \item \textbf{Preventing Accidental Loss}: Public/open shared drives suffer from unauthorized deletions and unintended overwrites by arbitrary members.
+    \item \textbf{Network Fragility}: Incomplete network transfers leave corrupt, unusable ghost files on the server without transactional staging.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Proposed System: Group File Sharing}
+\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{3pt}
+    \item \textbf{Client-Server Architecture}: Central server guarantees 24/7 availability and acts as authoritative access control enforcement.
+    \item \textbf{Rigid RBAC Model}: Members can upload, download, and create subfolders; \textbf{only Group Admins} can rename or delete files and folders.
+    \item \textbf{Resilient Framing \& Staging}: Custom LTV protocol over TCP, bounded chunk streaming, and atomic commit staging with SHA-256 verification.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 2: System Functionality & Use Case Model
+% -----------------------------------------------------------------------------
+\begin{frame}{2. System Functionality \& Use Case Model}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{System Actors \& Scope}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{4pt}
+    \item \textbf{Guest (Unauthenticated)}: Registers account (\texttt{AUTH\_REGISTER}) and signs in via credentials (\texttt{AUTH\_LOGIN}).
+    \item \textbf{Regular Group Member}: Joins groups, browses directory trees (\texttt{DIR\_LIST}), uploads files, downloads assets, and creates subfolders.
+    \item \textbf{Group Admin (Creator)}: Reviews join requests (\texttt{GROUP\_JOIN\_REVIEW}); holds exclusive authority to rename and delete files and folders.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Core Collaboration Use Cases}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{2pt}
+    \item \textbf{Identity \& Session (UC1)}: Account registration, credential authentication, and persistent session binding.
+    \item \textbf{Group Lifecycle (UC2--UC3)}: Create group (auto-assigns Admin), browse groups, and review pending member requests.
+    \item \textbf{Workspace Navigation (UC4, UC7)}: Hierarchical subfolder navigation and directory creation.
+    \item \textbf{Streamed File Transfer (UC5--UC6)}: Chunked upload/download with SHA-256 checksums and resume support.
+    \item \textbf{Administrative Protection (UC8)}: Exclusive admin controls for folder/file deletion and renaming.
+    \item \textbf{Real-Time Notifications (UC9)}: Server push events for member joins, uploads, and modifications.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 3: Role-Based Access Control (RBAC) Specification
+% -----------------------------------------------------------------------------
+\begin{frame}{3. Role-Based Access Control (RBAC) Specification}
+\small
+\vspace{2pt}
+\begin{block}{Group-Scoped Security Policy}
+\scriptsize Permissions evaluated dynamically per command on \texttt{(userId, groupId, role)}.
+\end{block}
+\vspace{2pt}
+
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabularx}{\textwidth}{lccccX}
+\toprule
+\textbf{Operation} & \textbf{Guest} & \textbf{Non-Member} & \textbf{Member} & \textbf{Group Admin} & \textbf{Security Policy / Enforcement Rule} \\
+\midrule
+\texttt{AUTH\_LOGIN} / \texttt{REGISTER} & \checkmark & \checkmark & \checkmark & \checkmark & Public unauthenticated commands \\
+\texttt{GROUP\_CREATE} & $\times$ & \checkmark & \checkmark & \checkmark & Authenticated user becomes Admin of new group \\
+\texttt{GROUP\_JOIN\_REQ} & $\times$ & \checkmark & $\times$ & $\times$ & Non-members can submit pending request \\
+\texttt{GROUP\_JOIN\_REVIEW} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Approve or reject applicants \\
+\texttt{DIR\_LIST} / \texttt{FILE\_INFO} & $\times$ & $\times$ & \checkmark & \checkmark & Restricted to approved group members \\
+\texttt{FILE\_DOWNLOAD} & $\times$ & $\times$ & \checkmark & \checkmark & Read access granted to all members \\
+\texttt{FILE\_UPLOAD} / \texttt{DIR\_CREATE} & $\times$ & $\times$ & \checkmark & \checkmark & Write access to contribute files / subfolders \\
+\texttt{FILE\_RENAME} / \texttt{DIR\_RENAME} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Returns \texttt{403 FORBIDDEN} otherwise \\
+\texttt{FILE\_DELETE} / \texttt{DIR\_DELETE} & $\times$ & $\times$ & $\times$ & \checkmark & \textbf{Admin only}: Returns \texttt{403 FORBIDDEN} otherwise \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 4: System Architecture: Paradigm Evaluation
+% -----------------------------------------------------------------------------
+\begin{frame}{4. System Architecture: Paradigm Evaluation}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Paradigm Evaluation}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{1.5pt}
+    \item \textbf{Pure P2P (Discarded)}: NAT/firewall traversal barriers; offline peers cause file unavailability; complex RBAC consensus.
+    \item \textbf{Hybrid (Discarded)}: High signaling overhead; asymmetric bandwidth; weak consistency during renames.
+    \item \textbf{Client-Server (Selected Architecture)}:
+    \begin{itemize}
+        \setlength{\itemsep}{1pt}
+        \item \textbf{Authoritative RBAC}: Single source of truth for access control.
+        \item \textbf{24/7 Availability}: Continuous centralized file access.
+        \item \textbf{Atomic Concurrency}: Server lock arbitration avoids races.
+    \end{itemize}
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{High-Level System Topology}
+\centering
+\vspace{1pt}
+\begin{tikzpicture}[
+    node distance=0.35cm,
+    box/.style={rectangle, rounded corners=2pt, draw=hustprimary, fill=hustprimary!8, thick, align=center, font=\tiny, inner sep=2pt},
+    srv/.style={rectangle, rounded corners=3pt, draw=hustprimary, fill=hustprimary!18, thick, align=center, font=\scriptsize\bfseries, inner sep=3pt},
+    db/.style={cylinder, shape border rotate=90, aspect=0.25, draw=hustprimary, fill=hustprimary!12, thick, align=center, font=\tiny, inner sep=2pt},
+    arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary}
+]
+\node[box] (c1) {Client A\\(Member)};
+\node[box, below=0.15cm of c1] (c2) {Client B\\(Admin)};
+\node[box, below=0.15cm of c2] (c3) {Client C\\(Member)};
+
+\node[srv, right=0.9cm of c2, minimum height=1.8cm, text width=2.1cm] (srv) {Central Server\\[1pt]{\tiny $\bullet$ Frame Demuxer}\\[-2pt]{\tiny $\bullet$ RBAC Guard}\\[-2pt]{\tiny $\bullet$ Lock Manager}\\[-2pt]{\tiny $\bullet$ Storage Engine}};
+
+\node[db, right=0.7cm of srv, yshift=0.45cm, minimum width=1.2cm] (db) {SQLite DB\\{\tiny RBAC/Metadata}};
+\node[box, right=0.7cm of srv, yshift=-0.45cm, minimum width=1.2cm] (fs) {File Storage\\{\tiny \texttt{/storage/groups/}}};
+
+\draw[arr] (c1.east) -- node[above, font=\tiny] {TCP} (srv.150);
+\draw[arr] (c2.east) -- node[above, font=\tiny] {TCP} (srv.west);
+\draw[arr] (c3.east) -- node[below, font=\tiny] {TCP} (srv.210);
+
+\draw[arr] (srv.30) -- (db.west);
+\draw[arr] (srv.330) -- (fs.west);
+\end{tikzpicture}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 5: Server Engine & Multi-Tier Architecture
+% -----------------------------------------------------------------------------
+\begin{frame}{5. Server Engine \& Multi-Tier Architecture}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Server Component Tiers}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{2.5pt}
+    \item \textbf{I/O Multiplexer Layer}: Persistent TCP sockets; worker pool decodes LTV frames asynchronously without blocking the network loop.
+    \item \textbf{Session \& RBAC Interceptor}: Active session table; validates role permissions prior to command dispatch.
+    \item \textbf{Concurrency \& Lock Manager}: Path-scoped \texttt{ReadWriteLock}; multiple concurrent readers vs single writer.
+    \item \textbf{Dual Storage Layer}: Relational SQLite (accounts, RBAC, metadata) + partitioned file tree.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Server Processing Pipeline}
+\centering
+\vspace{1pt}
+\begin{tikzpicture}[
+    node distance=0.08cm,
+    stepbox/.style={rectangle, rounded corners=2pt, draw=hustprimary!80, fill=hustprimary!6, thick, text width=6.2cm, align=left, inner sep=2pt},
+    arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary}
+]
+\node[stepbox] (p1) {\tiny\textbf{\color{hustprimary}1. TCP Stream Demuxer}: Accumulates bytes; verifies 5-byte header; extracts frame};
+\node[stepbox, below=of p1] (p2) {\tiny\textbf{\color{hustprimary}2. Authentication \& RBAC}: Validates session token and role permissions};
+\node[stepbox, below=of p2] (p3) {\tiny\textbf{\color{hustprimary}3. Lock Arbitration}: Acquires ReadLock (Read/List) or WriteLock (Delete/Commit)};
+\node[stepbox, below=of p3] (p4) {\tiny\textbf{\color{hustprimary}4. Worker Pool Execution}: Queries DB / streams chunks / commits file};
+\node[stepbox, below=of p4] (p5) {\tiny\textbf{\color{hustprimary}5. Outgoing Response \& Push}: Replies to caller; broadcasts async change events};
+
+\draw[arr] (p1) -- (p2);
+\draw[arr] (p2) -- (p3);
+\draw[arr] (p3) -- (p4);
+\draw[arr] (p4) -- (p5);
+\end{tikzpicture}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 6: Protocol Design: Transport Choice & TCP Framing
+% -----------------------------------------------------------------------------
+\begin{frame}{6. Protocol Design: Transport Choice \& TCP Framing}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Transport Layer: TCP Byte-Stream}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{2pt}
+    \item \textbf{Why TCP}: Demands 100\% byte reliability, in-order delivery, and flow control for file transfers.
+    \item \textbf{Boundary Challenge}: Byte streams lack message boundaries; leads to packet fragmentation and concatenation across socket reads.
+    \item \textbf{Solution: LTV Framing}: 5-byte header prefix defines frame length; receiver buffers until full frame arrives.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Length-Type-Value (LTV) Frame Layout}
+\centering
+\vspace{2pt}
+\begin{tikzpicture}[
+    cell/.style={rectangle, draw=hustprimary, thick, align=center, font=\scriptsize, inner sep=2.5pt},
+    headercell/.style={rectangle, draw=hustprimary, fill=hustprimary!18, thick, align=center, font=\scriptsize\bfseries, inner sep=2.5pt}
+]
+\node[headercell, minimum width=1.8cm] (len) {Length $N$ (4B)\\{\tiny Big-Endian}};
+\node[headercell, right=0cm of len, fill=hustprimary!30, minimum width=1.2cm] (type) {Type (1B)\\{\tiny 0=JSON, 1=Bin}};
+\node[cell, right=0cm of type, fill=hustprimary!6, minimum width=2.3cm] (pay) {Payload ($N-1$ B)\\{\tiny JSON or Binary Chunk}};
+
+\draw[thick, hustprimary, decorate, decoration={brace, amplitude=3pt, mirror}] 
+    ($(len.south west)+(0,-0.1)$) -- ($(type.south east)+(0,-0.1)$)
+    node[midway, below=3pt, font=\tiny\bfseries] {Fixed 5-byte Header};
+
+\draw[thick, hustprimary, decorate, decoration={brace, amplitude=3pt, mirror}] 
+    ($(type.south west)+(0,-0.65)$) -- ($(pay.south east)+(0,-0.65)$)
+    node[midway, below=3pt, font=\tiny\bfseries] {Length $N$ covers Type + Payload};
+\end{tikzpicture}
+\vspace{3pt}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{1.5pt}
+    \item $N = 1 + \text{Payload size in bytes}$.
+    \item \textbf{Type 0x00}: UTF-8 JSON Control / Event Message.
+    \item \textbf{Type 0x01}: Raw Binary File Chunk with offset header.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 7: Framing Specification: Type 0x00 vs Type 0x01
+% -----------------------------------------------------------------------------
+\begin{frame}{7. Framing Specification: Type 0x00 vs Type 0x01}
+\small
+\begin{block}{Type 0x00: JSON Control / Event Frame}
+Used for authentication, directory navigation, transfer control, and push event broadcasting.
+\end{block}
+\vspace{-3pt}
+\centering
+\begin{tikzpicture}[
+    hdr/.style={rectangle, draw=hustprimary, fill=hustprimary!20, thick, font=\scriptsize\bfseries, inner sep=3pt},
+    typ/.style={rectangle, draw=hustprimary, fill=hustprimary!35, thick, font=\scriptsize\bfseries, inner sep=3pt},
+    pay/.style={rectangle, draw=hustprimary, fill=hustprimary!6, thick, font=\scriptsize, inner sep=3pt}
+]
+\node[hdr, minimum width=2.0cm] (l1) {Length $N$ (4B)};
+\node[typ, right=0cm of l1, minimum width=1.6cm] (t1) {Type = 0x00 (1B)};
+\node[pay, right=0cm of t1, minimum width=8.5cm] (p1) {UTF-8 JSON Payload (Request / Response / Event envelope)};
+\end{tikzpicture}
+
+\vspace{3pt}
+\begin{block}{Type 0x01: Raw Binary File Chunk Frame}
+Used for high-speed file chunk streaming without base64 overhead (33\% bandwidth savings).
+\end{block}
+\vspace{-3pt}
+\centering
+\begin{tikzpicture}[
+    hdr/.style={rectangle, draw=hustprimary, fill=hustprimary!20, thick, font=\scriptsize\bfseries, inner sep=3pt},
+    typ/.style={rectangle, draw=hustprimary, fill=hustprimary!35, thick, font=\scriptsize\bfseries, inner sep=3pt},
+    sub/.style={rectangle, draw=hustprimary!80, fill=hustprimary!10, thick, font=\scriptsize, inner sep=3pt},
+    raw/.style={rectangle, draw=hustprimary, fill=hustprimary!5, thick, font=\scriptsize\bfseries, inner sep=3pt}
+]
+\node[hdr, minimum width=1.6cm] (l2) {Length (4B)};
+\node[typ, right=0cm of l2, minimum width=1.3cm] (t2) {Type = 0x01};
+\node[sub, right=0cm of t2, minimum width=2.2cm] (u2) {Transfer UUID (16B)};
+\node[sub, right=0cm of u2, minimum width=1.5cm] (o2) {Offset (8B)};
+\node[sub, right=0cm of o2, minimum width=1.5cm] (c2) {ChunkLen (4B)};
+\node[raw, right=0cm of c2, minimum width=3.8cm] (d2) {Raw File Bytes (ChunkLen)};
+\end{tikzpicture}
+\vspace{2pt}
+\begin{itemize}
+    \scriptsize
+    \item \textbf{Transfer UUID (16 Bytes)}: Identifies the active upload/download staging session.
+    \item \textbf{Offset (8 Bytes)}: Validates sequential chunk order and enables resumption after interruption.
+    \item \textbf{ChunkLen (4 Bytes)}: Payload size of the raw byte slice (standard chunk: 32 KiB / 64 KiB).
+\end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 8: Message Envelope Schema: Requests, Responses & Events
+% -----------------------------------------------------------------------------
+\begin{frame}[fragile]{8. Message Envelope Schema}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Client Request Envelope}
+\tiny
+\begin{verbatim}
+{
+  "v": 1, "kind": "REQUEST",
+  "reqId": "c8f2b740-9b3a-4f51-b8ef-101",
+  "cmd": "FILE_UPLOAD_INIT",
+  "payload": {
+    "groupId": 4, "path": "/reports/final.pdf",
+    "fileSize": 1048576, "sha256": "e3b0c442..."
+  }
+}
+\end{verbatim}
+\end{block}
+\vspace{-8pt}
+\begin{block}{Server Push Event (Unsolicited)}
+\tiny
+\begin{verbatim}
+{
+  "v": 1, "kind": "EVENT",
+  "event": "GROUP_FILE_ADDED",
+  "payload": {
+    "groupId": 4, "path": "/reports/final.pdf",
+    "byUser": "dongcv"
+  }
+}
+\end{verbatim}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Server Response Envelope}
+\tiny
+\begin{verbatim}
+// Successful Response
+{
+  "v": 1, "kind": "RESPONSE",
+  "reqId": "c8f2b740-9b3a-4f51-b8ef-101",
+  "cmd": "FILE_UPLOAD_INIT",
+  "ok": true,
+  "payload": {
+    "transferId": "9b1deb4d-3b7d-4bad...",
+    "chunkSize": 32768, "nextOffset": 0
+  }
+}
+// Error Response
+{
+  "v": 1, "kind": "RESPONSE",
+  "reqId": "d91a1002-8a1c-4033-9112-202",
+  "cmd": "DIR_DELETE",
+  "ok": false,
+  "error": {
+    "code": "FORBIDDEN_NOT_ADMIN",
+    "message": "Only Group Admin can delete."
+  }
+}
+\end{verbatim}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 9: Command Catalog (1/3): Auth & Group Management
+% -----------------------------------------------------------------------------
+\begin{frame}{9. Command Catalog: Authentication \& Groups}
+\small
+\begin{block}{Authentication \& Group Membership Protocol Commands}
+\end{block}
+\vspace{-4pt}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.98}
+\begin{tabularx}{\textwidth}{llp{4.2cm}X}
+\toprule
+\textbf{Command} & \textbf{Caller Role} & \textbf{Key Request Parameters} & \textbf{Key Response / Event Payload} \\
+\midrule
+\texttt{AUTH\_REGISTER} & Unauthenticated & \texttt{username}, \texttt{passwordHash}, \texttt{fullName} & \texttt{userId}, status: \texttt{"REGISTERED"} \\
+\texttt{AUTH\_LOGIN} & Unauthenticated & \texttt{username}, \texttt{passwordHash} & \texttt{userId}, \texttt{sessionToken}, \texttt{joinedGroups} \\
+\texttt{AUTH\_LOGOUT} & Authenticated & None & Invalidates session, releases locks \\
+\texttt{HEARTBEAT\_PING} & Any connected & \texttt{timestamp} & \texttt{pong}, connection health check \\
+\midrule
+\texttt{GROUP\_CREATE} & Authenticated & \texttt{groupName}, \texttt{description} & \texttt{groupId}, creator becomes \textbf{Group Admin} \\
+\texttt{GROUP\_LIST} & Authenticated & Filter: \texttt{"ALL"} or \texttt{"MY\_GROUPS"} & Array of \texttt{[groupId, name, role, adminName]} \\
+\texttt{GROUP\_JOIN\_REQ} & Non-Member & \texttt{groupId}, optional \texttt{message} & \texttt{reqId}, status: \texttt{"PENDING"}; notifies Admin \\
+\texttt{GROUP\_JOIN\_REVIEW} & \textbf{Group Admin} & \texttt{reqId}, \texttt{action: "ACCEPT"|"REJECT"} & Updates role to \texttt{MEMBER}; triggers \texttt{EVENT} \\
+\texttt{GROUP\_MEMBERS} & Group Member & \texttt{groupId} & Roster of members with roles (\texttt{MEMBER}/\texttt{ADMIN}) \\
+\texttt{GROUP\_LEAVE} & Group Member & \texttt{groupId} & Revokes access; Admin cannot abandon group \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 10: Command Catalog (2/3): Directory & File Operations
+% -----------------------------------------------------------------------------
+\begin{frame}{10. Command Catalog: Directory \& File Operations}
+\small
+\begin{block}{Directory Structure \& File Metadata Operations}
+\end{block}
+\vspace{-4pt}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.0}
+\begin{tabularx}{\textwidth}{llp{4.2cm}X}
+\toprule
+\textbf{Command} & \textbf{Caller Role} & \textbf{Key Request Parameters} & \textbf{Key Response / Error Behavior} \\
+\midrule
+\texttt{DIR\_LIST} & Member / Admin & \texttt{groupId}, \texttt{dirPath} & Entries: \texttt{[name, isDir, size, modified, author]} \\
+\texttt{DIR\_CREATE} & Member / Admin & \texttt{groupId}, \texttt{parentPath}, \texttt{dirName} & Creates subfolder; broadcasts \texttt{EVENT\_DIR\_CREATED} \\
+\texttt{DIR\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{path}, \texttt{newName} & Renames folder; rejects members with \texttt{FORBIDDEN} \\
+\texttt{DIR\_DELETE} & \textbf{Admin Only} & \texttt{groupId}, \texttt{path}, \texttt{recursive} & Recursively deletes directory; checks write lock \\
+\midrule
+\texttt{FILE\_INFO} & Member / Admin & \texttt{groupId}, \texttt{filePath} & Returns size, SHA-256 hash, author, timestamp \\
+\texttt{FILE\_RENAME} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath}, \texttt{newFilename} & Renames file; rejects members with \texttt{FORBIDDEN} \\
+\texttt{FILE\_DELETE} & \textbf{Admin Only} & \texttt{groupId}, \texttt{filePath} & Removes file; broadcasts \texttt{EVENT\_FILE\_DELETED} \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 11: Command Catalog (3/3): File Transfer Lifecycle
+% -----------------------------------------------------------------------------
+\begin{frame}{11. Command Catalog: File Transfer Lifecycle}
+\small
+\begin{block}{Staged Upload, Resilient Streaming, and Download Commands}
+\end{block}
+\vspace{-4pt}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.0}
+\begin{tabularx}{\textwidth}{llp{4.2cm}X}
+\toprule
+\textbf{Command} & \textbf{Caller Role} & \textbf{Key Request Parameters} & \textbf{Key Response / Protocol Behavior} \\
+\midrule
+\texttt{FILE\_UPLOAD\_INIT} & Member / Admin & \texttt{groupId}, \texttt{path}, \texttt{fileSize}, \texttt{sha256} & Allocates \texttt{.tmp} file; returns \texttt{transferId}, \texttt{chunkSize} \\
+\texttt{Type 0x01 Chunk} & Member / Admin & \texttt{UUID}, \texttt{offset}, \texttt{chunkLen}, \texttt{rawBytes} & Ingests binary chunk; advances staging offset \\
+\texttt{FILE\_UPLOAD\_FINISH} & Member / Admin & \texttt{transferId}, \texttt{finalSha256} & Verifies SHA-256; atomic rename to repository \\
+\texttt{FILE\_UPLOAD\_ABORT} & Member / Admin & \texttt{transferId}, \texttt{reason} & Deletes temporary \texttt{.tmp} staging file immediately \\
+\midrule
+\texttt{FILE\_DOWNLOAD\_INIT} & Member / Admin & \texttt{groupId}, \texttt{filePath}, \texttt{offset} & Acquires ReadLock; returns \texttt{transferId}, \texttt{totalChunks} \\
+\texttt{Type 0x01 Stream} & Server $\to$ Client & \texttt{UUID}, \texttt{offset}, \texttt{chunkLen}, \texttt{rawBytes} & Server streams sequential chunks to client socket \\
+\texttt{FILE\_DOWNLOAD\_ACK} & Member / Admin & \texttt{transferId}, \texttt{status: "COMPLETE"} & Releases ReadLock; finishes transfer session \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 12: State Machine: Client Session & Connection Lifecycle
+% -----------------------------------------------------------------------------
+\begin{frame}{12. State Machine: Client Connection Lifecycle}
+\small
+\begin{block}{Connection Lifecycle States \& Event Transitions}
+Guarantees session boundaries and timely reclamation of server resources.
+\end{block}
+\vspace{2pt}
+\centering
+\begin{tikzpicture}[
+    st/.style={rectangle, rounded corners=3pt, draw=hustprimary, fill=hustprimary!10, thick, font=\scriptsize\bfseries, align=center, inner sep=3pt, minimum height=0.6cm},
+    arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary, font=\tiny}
+]
+% Row 1
+\node[st] (disc) {DISCONNECTED};
+\node[st, right=1.6cm of disc] (conn) {CONNECTED\\{\tiny Unauthenticated}};
+\node[st, right=1.6cm of conn] (auth) {AUTHENTICATED\\{\tiny User Bound}};
+
+% Row 2
+\node[st, below=1.3cm of auth] (work) {GROUP WORKSPACE\\{\tiny Group Context}};
+\node[st, left=1.6cm of work] (tran) {TRANSFER ACTIVE\\{\tiny Staged Chunk Stream}};
+
+% Forward transitions
+\draw[arr] (disc) -- node[above=2pt] {TCP Connect} (conn);
+\draw[arr] (conn) -- node[above=2pt] {\texttt{LOGIN} ok} (auth);
+\draw[arr] (auth) -- node[right=3pt] {\texttt{GROUP\_SELECT}} (work);
+\draw[arr] ($(work.west)+(0,0.12)$) -- node[above=2pt] {\texttt{TRANSFER\_INIT}} ($(tran.east)+(0,0.12)$);
+\draw[arr] ($(tran.east)+(0,-0.12)$) -- node[below=2pt] {Complete} ($(work.west)+(0,-0.12)$);
+
+% Disconnect / Reset transitions
+\draw[arr] (conn.north) to[bend right=22] node[above=2pt] {Timeout} (disc.north);
+\draw[arr] ($(auth.south)-(0.4,0)$) -- ++(0,-0.4) -| node[pos=0.25, above=1pt] {\texttt{LOGOUT}} ($(disc.south)+(0.3,0)$);
+\draw[arr] (tran.west) -| node[pos=0.75, right=3pt, font=\tiny] {\shortstack[l]{Socket Drop:\\Clean \texttt{.tmp} \& Free Locks}} ($(disc.south)-(0.3,0)$);
+\end{tikzpicture}
+\vspace{2pt}
+\begin{itemize}
+    \scriptsize
+    \item \textbf{Socket Drop Guard}: Socket disconnect at any stage triggers instant release of active Read/Write locks and unlinks incomplete staging files.
+\end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 13: State Machine: Resilient File Transfer & Staging
+% -----------------------------------------------------------------------------
+\begin{frame}{13. State Machine: Resilient File Transfer}
+\small
+\begin{block}{Staged File Upload Lifecycle: Preventing Corrupted Transfers}
+Directly resolves the challenge of broken TCP connections leaving partial ghost files on disk.
+\end{block}
+\vspace{-2pt}
+\centering
+\begin{tikzpicture}[
+    st/.style={rectangle, rounded corners=3pt, draw=hustprimary, fill=hustprimary!10, thick, font=\scriptsize\bfseries, align=center, inner sep=3pt},
+    err/.style={rectangle, rounded corners=3pt, draw=red!80!black, fill=red!10, thick, font=\scriptsize\bfseries, align=center, inner sep=3pt},
+    arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary, font=\tiny},
+    errarr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=red!80!black, dashed, font=\tiny}
+]
+% Row 1
+\node[st] (idle) {IDLE};
+\node[st, right=1.6cm of idle] (stg) {UPLOAD STAGING\\{\tiny Allocate \texttt{.upload\_UUID.tmp}}};
+\node[st, right=2.2cm of stg] (rcv) {RECEIVING CHUNKS\\{\tiny Ingest Type 0x01 Frames}};
+
+% Row 2
+\node[err, below=1.4cm of stg] (abt) {ROLLBACK \& ABORT\\{\tiny Unlink \texttt{.tmp}; Free Locks}};
+\node[st, below=1.4cm of rcv] (vfy) {VERIFY INTEGRITY\\{\tiny Compare SHA-256 Hash}};
+\node[st, right=1.2cm of vfy] (cmt) {COMMITTED\\{\tiny Atomic File Rename}};
+
+% Success transitions
+\draw[arr] (idle) -- node[above=2pt] {\texttt{UPLOAD\_INIT}} (stg);
+\draw[arr] (stg) -- node[above=2pt] {First Chunk} (rcv);
+\draw[arr] (rcv) -- node[right=3pt] {Offset = Size} (vfy);
+\draw[arr] (vfy) -- node[above=2pt] {Hash Match} (cmt);
+
+% Failure transitions
+\draw[errarr] (stg) -- node[left=2pt] {Disk Full} (abt);
+\draw[errarr] ($(rcv.south)-(0.6,0)$) -- node[pos=0.45, below=2pt, sloped] {Socket Drop / Timeout} (abt.north east);
+\draw[errarr] (vfy) -- node[above=2pt] {Hash Mismatch} (abt);
+\draw[errarr] (abt.west) -| node[pos=0.3, below=2pt] {Reset State} (idle.south);
+\end{tikzpicture}
+\vspace{3pt}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{1.5pt}
+    \item \textbf{Atomic Staging}: Upload writes to hidden temporary file \texttt{/storage/.tmp/.upload\_UUID.tmp}.
+    \item \textbf{Checksum Validation}: Client sends target SHA-256; server verifies byte integrity upon completion.
+    \item \textbf{Zero Partial Ghost Files}: Broken connections trigger immediate deletion of the temporary file.
+\end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 14: Message Processing & Concurrency Pipeline
+% -----------------------------------------------------------------------------
+\begin{frame}{14. Message Processing \& Concurrency Pipeline}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Server Pipeline Workflow}
+\scriptsize
+\begin{enumerate}
+    \setlength{\itemsep}{2pt}
+    \item \textbf{TCP Demuxer}: Accumulates frames; checks 5B header.
+    \item \textbf{Routing}: Type 0x00 $\to$ JSON parser; Type 0x01 $\to$ Streamer.
+    \item \textbf{RBAC Guard}: Validates active session and group role.
+    \item \textbf{Lock Arbitration}:
+    \begin{itemize}
+        \tiny
+        \item \texttt{ReadLock}: For \texttt{FILE\_DOWNLOAD}, \texttt{DIR\_LIST}.
+        \item \texttt{WriteLock}: For \texttt{DIR\_RENAME}, \texttt{DELETE}, Commit.
+    \end{itemize}
+    \item \textbf{Execution \& Push}: Executes DB query / file I/O; sends response; broadcasts events to group members.
+\end{enumerate}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Locking Architecture: Solving Race Conditions}
+\centering
+\vspace{1pt}
+\begin{tikzpicture}[
+    box/.style={rectangle, rounded corners=2pt, draw=hustprimary, fill=hustprimary!8, thick, font=\tiny, align=center, inner sep=2.5pt},
+    arr/.style={-{Latex[length=1.5mm, width=1.1mm]}, thick, color=hustprimary}
+]
+\node[box, text width=6.2cm] (b1) {\textbf{Member 1: Download} \texttt{/reports/A.pdf}\\Acquires \textbf{Shared ReadLock} on \texttt{/reports/A.pdf}};
+\node[box, below=0.2cm of b1, text width=6.2cm] (b2) {\textbf{Member 2: Download} \texttt{/reports/A.pdf}\\Acquires \textbf{Shared ReadLock} (Allowed concurrently)};
+\node[box, below=0.2cm of b2, text width=6.2cm, fill=red!10, draw=red!80!black] (b3) {\textbf{Admin: Delete / Rename} \texttt{/reports/}\\Requests \textbf{Exclusive WriteLock} $\to$ \textbf{Blocked / Queued}\\Waits until readers finish or returns \texttt{LOCK\_CONFLICT}};
+
+\draw[arr] (b1) -- (b2);
+\draw[arr] (b2) -- (b3);
+\end{tikzpicture}
+\vspace{2pt}
+\begin{itemize}
+    \tiny
+    \item Eliminates filesystem crashes when admins rename or delete folders while members are actively downloading inside them.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 15: Interaction Sequence: Group Creation & Join Approval
+% -----------------------------------------------------------------------------
+\begin{frame}{15. Sequence: Group Join Request \& Admin Review}
+\small
+\begin{block}{Interaction: Applicant Submits Join Request $\to$ Admin Approves}
+\end{block}
+\vspace{-4pt}
+\centering
+\begin{tikzpicture}[
+    actor/.style={rectangle, draw=hustprimary, fill=hustprimary!15, thick, font=\scriptsize\bfseries, inner sep=2.5pt, minimum width=1.8cm},
+    lifeline/.style={thick, dashed, color=hustprimary!60},
+    msg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=hustprimary, font=\tiny},
+    pushmsg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=blue!80!black, dashed, font=\tiny}
+]
+\node[actor] (userB) {Applicant (Bob)};
+\node[actor, right=1.6cm of userB] (srv) {Server Engine};
+\node[actor, right=1.6cm of srv] (db) {SQLite DB};
+\node[actor, right=1.6cm of db] (admin) {Admin (Alice)};
+
+\draw[lifeline] (userB) -- ++(0,-4.1);
+\draw[lifeline] (srv) -- ++(0,-4.1);
+\draw[lifeline] (db) -- ++(0,-4.1);
+\draw[lifeline] (admin) -- ++(0,-4.1);
+
+\draw[msg] ($(userB)+(0,-0.75)$) -- node[above=1pt] {\texttt{GROUP\_JOIN\_REQ(groupId=4)}} ($(srv)+(0,-0.75)$);
+\draw[msg] ($(srv)+(0,-1.20)$) -- node[above=1pt] {\texttt{INSERT INTO join\_reqs (PENDING)}} ($(db)+(0,-1.20)$);
+\draw[msg] ($(db)+(0,-1.65)$) -- node[above=1pt] {\texttt{ok (reqId=55)}} ($(srv)+(0,-1.65)$);
+\draw[msg] ($(srv)+(0,-2.10)$) -- node[above=1pt] {\texttt{RESPONSE: ok, status="PENDING"}} ($(userB)+(0,-2.10)$);
+
+\draw[pushmsg] ($(srv)+(0,-2.55)$) -- node[above=1pt] {\texttt{EVENT: JOIN\_REQUESTED(reqId=55, Bob)}} ($(admin)+(0,-2.55)$);
+
+\draw[msg] ($(admin)+(0,-3.00)$) -- node[above=1pt] {\texttt{GROUP\_JOIN\_REVIEW(reqId=55, ACCEPT)}} ($(srv)+(0,-3.00)$);
+\draw[msg] ($(srv)+(0,-3.45)$) -- node[above=1pt] {\texttt{UPDATE role="MEMBER" WHERE user=Bob}} ($(db)+(0,-3.45)$);
+\draw[pushmsg] ($(srv)+(0,-3.90)$) -- node[above=1pt] {\texttt{EVENT: JOIN\_ACCEPTED(groupId=4)}} ($(userB)+(0,-3.90)$);
+\end{tikzpicture}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 16: Interaction Sequence: Chunked Upload & Atomic Commit
+% -----------------------------------------------------------------------------
+\begin{frame}{16. Sequence: Chunked Upload \& Atomic Commit}
+\small
+\begin{block}{Interaction: Chunk Streaming with Integrity Verification \& Atomic Move}
+\end{block}
+\vspace{-4pt}
+\centering
+\begin{tikzpicture}[
+    actor/.style={rectangle, draw=hustprimary, fill=hustprimary!15, thick, font=\scriptsize\bfseries, inner sep=2.5pt, minimum width=1.6cm},
+    lifeline/.style={thick, dashed, color=hustprimary!60},
+    msg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=hustprimary, font=\tiny},
+    binmsg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=blue!80!black, font=\tiny}
+]
+\node[actor] (client) {Client (Uploader)};
+\node[actor, right=1.5cm of client] (demux) {Demuxer / Server};
+\node[actor, right=1.5cm of demux] (stg) {Staging Engine};
+\node[actor, right=1.5cm of stg] (repo) {Group Repository};
+
+\draw[lifeline] (client) -- ++(0,-4.1);
+\draw[lifeline] (demux) -- ++(0,-4.1);
+\draw[lifeline] (stg) -- ++(0,-4.1);
+\draw[lifeline] (repo) -- ++(0,-4.1);
+
+\draw[msg] ($(client)+(0,-0.75)$) -- node[above=1pt] {\texttt{Type 0: UPLOAD\_INIT(file, size, sha256)}} ($(demux)+(0,-0.75)$);
+\draw[msg] ($(demux)+(0,-1.20)$) -- node[above=1pt] {\texttt{Create /tmp/.upload\_UUID.tmp}} ($(stg)+(0,-1.20)$);
+\draw[msg] ($(demux)+(0,-1.65)$) -- node[above=1pt] {\texttt{RESPONSE: ok, transferId, chunkSize}} ($(client)+(0,-1.65)$);
+
+\draw[binmsg] ($(client)+(0,-2.10)$) -- node[above=1pt] {\texttt{Type 1: Chunk 0 [UUID, off=0, 32KB]}} ($(demux)+(0,-2.10)$);
+\draw[binmsg] ($(demux)+(0,-2.55)$) -- node[above=1pt] {\texttt{Append bytes; update rolling SHA-256}} ($(stg)+(0,-2.55)$);
+\draw[binmsg] ($(client)+(0,-3.00)$) -- node[above=1pt] {\texttt{Type 1: Chunk N [UUID, off=N, rem]}} ($(demux)+(0,-3.00)$);
+
+\draw[msg] ($(client)+(0,-3.45)$) -- node[above=1pt] {\texttt{Type 0: UPLOAD\_FINISH(UUID, sha256)}} ($(demux)+(0,-3.45)$);
+\draw[msg] ($(demux)+(0,-3.90)$) -- node[above=1pt] {\texttt{Verify hash; Atomic Rename .tmp $\to$ final}} ($(repo)+(0,-3.90)$);
+\end{tikzpicture}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 17: Interaction Sequence: Concurrency Conflict Resolution
+% -----------------------------------------------------------------------------
+\begin{frame}{17. Sequence: Concurrency Conflict Resolution}
+\small
+\begin{block}{Conflict Arbitration: Active Download vs Admin Delete Command}
+\end{block}
+\vspace{-4pt}
+\centering
+\begin{tikzpicture}[
+    actor/.style={rectangle, draw=hustprimary, fill=hustprimary!15, thick, font=\scriptsize\bfseries, inner sep=2.5pt, minimum width=1.7cm},
+    lifeline/.style={thick, dashed, color=hustprimary!60},
+    msg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=hustprimary, font=\tiny},
+    errmsg/.style={-{Latex[length=1.8mm, width=1.3mm]}, thick, color=red!80!black, font=\tiny}
+]
+\node[actor] (member) {Member (Reader)};
+\node[actor, right=1.5cm of member] (lock) {Lock Manager};
+\node[actor, right=1.5cm of lock] (srv) {Server Storage};
+\node[actor, right=1.5cm of srv] (admin) {Admin (Writer)};
+
+\draw[lifeline] (member) -- ++(0,-4.1);
+\draw[lifeline] (lock) -- ++(0,-4.1);
+\draw[lifeline] (srv) -- ++(0,-4.1);
+\draw[lifeline] (admin) -- ++(0,-4.1);
+
+\draw[msg] ($(member)+(0,-0.75)$) -- node[above=1pt] {\texttt{DOWNLOAD\_INIT(/data/A.pdf)}} ($(lock)+(0,-0.75)$);
+\draw[msg] ($(lock)+(0,-1.15)$) -- ++(0.4,0) |- node[pos=0.5, right=2pt, font=\tiny] {\textbf{Acquire ReadLock} (Granted)} ($(lock)+(0,-1.50)$);
+\draw[msg] ($(lock)+(0,-1.75)$) -- node[above=1pt] {\texttt{Stream Type 1 Chunks to Member}} ($(member)+(0,-1.75)$);
+
+\draw[msg] ($(admin)+(0,-2.20)$) -- node[above=1pt] {\texttt{DIR\_DELETE(/data/)}} ($(srv)+(0,-2.20)$);
+\draw[msg] ($(srv)+(0,-2.65)$) -- node[above=1pt] {\textbf{Request Exclusive WriteLock}} ($(lock)+(0,-2.65)$);
+\draw[errmsg] ($(lock)+(0,-3.10)$) -- node[above=1pt] {\textbf{Conflict: Active ReadLock held!}} ($(srv)+(0,-3.10)$);
+\draw[errmsg] ($(srv)+(0,-3.50)$) -- node[above=1pt] {\texttt{Error: 409 LOCK\_CONFLICT}} ($(admin)+(0,-3.50)$);
+\draw[msg] ($(member)+(0,-3.90)$) -- node[above=2pt] {\texttt{DOWNLOAD\_COMPLETE (Release Lock)}} ($(lock)+(0,-3.90)$);
+\end{tikzpicture}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 18: Implementation Roadmap & Next Milestones
+% -----------------------------------------------------------------------------
+\begin{frame}{18. Implementation Roadmap \& Next Milestones}
+\small
+\vspace{-2pt}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Phase 1 to 3: Core Platform \& RBAC}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{1.5pt}
+    \item \textbf{Phase 1: Design Review (W1--2)}: Use cases, RBAC matrix, LTV framing, command catalog. (\textbf{Status: Done})
+    \item \textbf{Phase 2: Core Socket Engine (W3--4)}: Multithreaded TCP server, byte accumulator, SQLite DB schema, authentication.
+    \item \textbf{Phase 3: Group Management (W5--6)}: Group CRUD, join request review, subfolder CRUD, admin delete/rename.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Phase 4 \& 5: Streaming \& Client GUI}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{1.5pt}
+    \item \textbf{Phase 4: Streaming \& Staging (W7--8)}:
+    \begin{itemize}
+        \setlength{\itemsep}{0.5pt}
+        \item Type 0x01 chunk streaming (32 KiB) \& \texttt{.tmp} staging.
+        \item Rolling SHA-256 validation \& atomic commit.
+        \item Fault recovery on socket drop / disconnect.
+    \end{itemize}
+    \item \textbf{Phase 5: JavaFX GUI \& QA (W9--10)}:
+    \begin{itemize}
+        \setlength{\itemsep}{0.5pt}
+        \item Desktop client UI with transfer progress bars.
+        \item Multi-client stress testing \& course defense.
+    \end{itemize}
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Slide 19: Summary & Conclusion
+% -----------------------------------------------------------------------------
+\begin{frame}{19. Summary \& Conclusion}
+\small
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{Core Contributions in Report 02}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{2.5pt}
+    \item \textbf{LTV Framing Protocol}: 5-byte header resolves TCP stream boundary ambiguity cleanly.
+    \item \textbf{Multiplexed Streaming}: JSON control frames and raw binary chunks multiplexed over one persistent TCP socket.
+    \item \textbf{Rigid RBAC Security}: Group isolation with exclusive admin protection for delete and rename operations.
+    \item \textbf{Fault-Tolerant Staging}: Temporary file staging with SHA-256 verification prevents partial ghost files.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Addressed Challenges from Report 01}
+\scriptsize
+\begin{itemize}
+    \setlength{\itemsep}{2.5pt}
+    \item \textbf{Challenge 1: Concurrent Access}: Path-scoped \texttt{ReentrantReadWriteLock} prevents race conditions between readers and writers.
+    \item \textbf{Challenge 2: Partial Transfers}: Guaranteed atomic rename from staging file only after full hash verification.
+    \item \textbf{Challenge 3: Session State}: Connection-bound session table validates identity without re-sending credentials.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+\setbeamertemplate{background canvas}{}
+\useStyleLogoOnly
+\hustthankyou
+
+\end{document}
